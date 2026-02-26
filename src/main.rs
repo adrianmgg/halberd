@@ -1,4 +1,6 @@
 pub(crate) mod lexer;
+pub(crate) mod parser;
+pub(crate) mod ast;
 
 use chumsky::{Parser, error::Rich, pratt, prelude::*};
 

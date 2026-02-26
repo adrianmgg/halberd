@@ -27,6 +27,7 @@ pub enum Op {
     MatrixMultiply,
 }
 
+// TODO see how the chumsky mini_ml example does its lexer, maybe do it that way instead?
 pub fn lexer<'src>() -> impl Parser<
     'src,
     &'src str,
