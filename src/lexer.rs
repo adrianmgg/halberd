@@ -14,6 +14,14 @@ pub enum Keyword {
     Let,
     If,
     Else,
+    True,
+    False,
+}
+
+impl <'a> Into<Token<'a>> for Keyword {
+    fn into(self) -> Token<'a> {
+        Token::Keyword(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -43,6 +51,8 @@ pub fn lexer<'src>() -> impl Parser<
         "let" => Token::Keyword(Keyword::Let),
         "if" => Token::Keyword(Keyword::If),
         "else" => Token::Keyword(Keyword::Else),
+        "true" => Token::Keyword(Keyword::True),
+        "false" => Token::Keyword(Keyword::False),
         other => Token::Ident(other),
     });
 
