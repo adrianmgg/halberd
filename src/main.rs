@@ -1,3 +1,5 @@
+pub(crate) mod lexer;
+
 use chumsky::{Parser, error::Rich, pratt, prelude::*};
 
 pub(crate) mod constants {
