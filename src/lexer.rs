@@ -2,10 +2,18 @@ use chumsky::prelude::*;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Token<'src> {
-    Fn,
+    Keyword(Keyword),
     DollarIdent(&'src str),
     Ident(&'src str),
     Op { op: Op, lifts: usize },
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Keyword {
+    Function,
+    Let,
+    If,
+    Else,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -30,7 +38,10 @@ pub fn lexer<'src>() -> impl Parser<
         .map(Token::DollarIdent);
 
     let ident = text::unicode::ident().map(|ident| match ident {
-        "fn" => Token::Fn,
+        "fn" => Token::Keyword(Keyword::Function),
+        "let" => Token::Keyword(Keyword::Let),
+        "if" => Token::Keyword(Keyword::If),
+        "else" => Token::Keyword(Keyword::Else),
         other => Token::Ident(other),
     });
 
