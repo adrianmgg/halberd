@@ -1,3 +1,5 @@
+use chumsky::{Parser, error::Rich, pratt, prelude::*};
+
 pub(crate) mod constants {
     pub(crate) mod op_power {
         pub(crate) const ADDSUB: u16 = 2;
@@ -6,16 +8,13 @@ pub(crate) mod constants {
     }
 }
 
-fn main() {
-    use chumsky::{pratt, prelude::*};
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Expr {
+    LiteralInt(i64),
+    InfixOp(Box<Expr>, InfixOpSimple, Box<Expr>),
+}
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    enum Expr {
-        LiteralInt(i64),
-        InfixOp(Box<Expr>, InfixOpSimple, Box<Expr>),
-    }
-
-    macro_rules! mk_infix_ops {
+macro_rules! mk_infix_ops {
         (
             $( $name:ident ( $token:literal, $associativity:ident, $power:ident ) ),* $(,)?
         ) => {
@@ -44,52 +43,53 @@ fn main() {
             }
         };
     }
-    mk_infix_ops! {
-        Add("+", left, ADDSUB),
-        Subtract("-", left, ADDSUB),
-        Multiply("*", left, MULDIV),
-        Divide("/", left, MULDIV),
-        DotProduct("*.", left, MULDIV),
-        CrossProduct("*><", left, MULDIV),
-        MatrixMultiply("*@", left, MULDIV),
-    }
+mk_infix_ops! {
+    Add("+", left, ADDSUB),
+    Subtract("-", left, ADDSUB),
+    Multiply("*", left, MULDIV),
+    Divide("/", left, MULDIV),
+    DotProduct("*.", left, MULDIV),
+    CrossProduct("*><", left, MULDIV),
+    MatrixMultiply("*@", left, MULDIV),
+}
 
-    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    struct InfixOpFull {
-        op: InfixOpSimple,
-        lifted: bool,
-    }
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct InfixOpFull {
+    op: InfixOpSimple,
+    lifted: bool,
+}
 
-    impl InfixOpFull {
-        fn tokenstr(&self) -> String {
-            match self {
-                Self { op, lifted: false } => op.tokenstr().into(),
-                Self { op, lifted: true } => format!("{}^", op.tokenstr()),
-            }
-        }
-
-        fn associativity(&self) -> pratt::Associativity {
-            if self.lifted {
-                pratt::left(constants::op_power::LIFTED)
-            } else {
-                self.op.associativity()
-            }
-        }
-
-        fn all() -> impl Iterator<Item = Self> {
-            let normals = InfixOpSimple::all().iter().map(|op| Self {
-                op: *op,
-                lifted: false,
-            });
-            let lifteds = InfixOpSimple::all().iter().map(|op| Self {
-                op: *op,
-                lifted: true,
-            });
-            lifteds.chain(normals)
+impl InfixOpFull {
+    fn tokenstr(&self) -> String {
+        match self {
+            Self { op, lifted: false } => op.tokenstr().into(),
+            Self { op, lifted: true } => format!("{}^", op.tokenstr()),
         }
     }
 
-    let atom = text::int::<_, chumsky::extra::Err<Simple<char>>>(10)
+    fn associativity(&self) -> pratt::Associativity {
+        if self.lifted {
+            pratt::left(constants::op_power::LIFTED)
+        } else {
+            self.op.associativity()
+        }
+    }
+
+    fn all() -> impl Iterator<Item = Self> {
+        let normals = InfixOpSimple::all().iter().map(|op| Self {
+            op: *op,
+            lifted: false,
+        });
+        let lifteds = InfixOpSimple::all().iter().map(|op| Self {
+            op: *op,
+            lifted: true,
+        });
+        lifteds.chain(normals)
+    }
+}
+
+fn parser<'a>() -> impl Parser<'a, &'a str, Expr, chumsky::extra::Err<Rich<'a, char>>> {
+    let atom = text::int(10)
         .from_str()
         .unwrapped()
         .map(Expr::LiteralInt)
@@ -99,7 +99,7 @@ fn main() {
         println!("{:?} ('{}') {:?}", op.op, op.tokenstr(), op.associativity());
     }
 
-    let expr = atom.pratt(
+    atom.pratt(
         InfixOpFull::all()
             .map(|op| {
                 pratt::infix(
@@ -109,11 +109,13 @@ fn main() {
                 )
             })
             .collect::<Vec<_>>(),
-    );
+    )
+}
 
+fn main() {
     // let s = "1-2 *.^ 3-4 /^ 5";
     let s = "1 + 2 * 3";
-    let e = expr.parse(s).into_result();
+    let e = parser().parse(s).into_result();
     dbg!(e);
 
     {
@@ -131,20 +133,20 @@ fn main() {
         }
 
         assert_eq!(
-            expr.parse("1 + 2 * 3 + 4").into_result(),
+            parser().parse("1 + 2 * 3 + 4").into_result(),
             Ok(E!(  ( (1) Add ((2) Multiply (3)) ) Add (4)  )),
         );
         assert_eq!(
-            expr.parse("1 + 2 *^ 3 + 4").into_result(),
+            parser().parse("1 + 2 *^ 3 + 4").into_result(),
             Ok(E!(  ((1) Add (2)) Multiply ((3) Add (4))  )),
         );
 
         assert_eq!(
-            expr.parse("1 * 2 * 3").into_result(),
+            parser().parse("1 * 2 * 3").into_result(),
             Ok(E!(  ((1) Multiply (2)) Multiply (3)  )),
         );
         assert_eq!(
-            expr.parse("1 *^ 2 * 3").into_result(),
+            parser().parse("1 *^ 2 * 3").into_result(),
             Ok(E!(  (1) Multiply ((2) Multiply (3))  )),
         );
     }
