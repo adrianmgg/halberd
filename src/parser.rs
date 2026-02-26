@@ -17,6 +17,9 @@ pub fn parser<'tokens, 'src: 'tokens, I>() -> impl Parser<
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
 {
-    let atom = just(Token::Keyword(Keyword::True)).to(Expr::LiteralBool(true));
+    let atom = choice((
+        just(Keyword::True).to(Expr::LiteralBool(true)),
+        just(Keyword::False).to(Expr::LiteralBool(false)),
+    ));
     atom.repeated().collect()
 }
