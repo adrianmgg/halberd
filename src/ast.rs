@@ -6,6 +6,7 @@ pub(crate) enum Expr<'a> {
     LiteralBool(bool),
     InfixOp(Box<Self>, InfixOp, Box<Self>),
     Var(&'a str),
+    Declaration { name: &'a str, value: Box<Self> },
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

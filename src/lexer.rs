@@ -6,6 +6,7 @@ pub enum Token<'src> {
     DollarIdent(&'src str),
     Ident(&'src str),
     Op { op: Op, lifts: usize },
+    Equals,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
