@@ -5,21 +5,48 @@ pub enum Token<'src> {
     Fn,
     DollarIdent(&'src str),
     Ident(&'src str),
+    Op { op: Op, lifts: usize },
 }
 
-// largely based on chumsky's "nano_rust" example
-// @ https://github.com/zesterer/chumsky/blob/main/examples/nano_rust.rs
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Op {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    DotProduct,
+    CrossProduct,
+    MatrixMultiply,
+}
+
 pub fn lexer<'src>() -> impl Parser<
     'src,
     &'src str,
     Vec<Spanned<Token<'src>>>,
     chumsky::extra::Err<Rich<'src, char, SimpleSpan>>,
 > {
+    let dollar_ident = just('$')
+        .ignore_then(text::unicode::ident())
+        .map(Token::DollarIdent);
+
     let ident = text::unicode::ident().map(|ident| match ident {
+        "fn" => Token::Fn,
         other => Token::Ident(other),
     });
 
-    let token = ident;
+    let op = choice((
+        just('+').to(Op::Add),
+        just('-').to(Op::Subtract),
+        just("*.").to(Op::DotProduct),
+        just("*><").to(Op::CrossProduct),
+        just("*@").to(Op::MatrixMultiply),
+        just('*').to(Op::Multiply),
+        just('/').to(Op::Divide),
+    ))
+    .then(just('^').repeated().count())
+    .map(|(op, lifts)| Token::Op { op, lifts });
+
+    let token = choice((op, ident, dollar_ident));
 
     let comment = just("$.")
         .then(any().and_is(just('\n').not()).repeated())
