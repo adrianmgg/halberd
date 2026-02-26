@@ -1,5 +1,10 @@
 use chumsky::prelude::*;
 
+// TODO: design decision - do we flatten these all out like e.g.
+//         Let, If, Else, Ident(&str), OpAdd, OpSubtract, ...
+//       or do we do sub-enums like
+//         Keyword(Keyword), Ident(&str), Op(Op)
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Token<'src> {
     Keyword(Keyword),
@@ -19,9 +24,37 @@ pub enum Keyword {
     False,
 }
 
-impl <'a> Into<Token<'a>> for Keyword {
-    fn into(self) -> Token<'a> {
-        Token::Keyword(self)
+// for conciseness, allow using a Keyword variant as a 1-element Token sequence
+// containing the Token corresponding with itself,
+// so that e.g. `just(Keyword::True)` works as a parser accepting only Token::Keyword(Keyword::True)
+impl<'src> chumsky::container::OrderedSeq<'_, Token<'src>> for Keyword {}
+impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Keyword {
+    type Item<'a>
+        = Token<'src>
+    where
+        Self: 'a;
+
+    type Iter<'a>
+        = std::iter::Once<Token<'src>>
+    where
+        Self: 'a;
+
+    fn seq_iter(&self) -> Self::Iter<'me> {
+        std::iter::once(Token::Keyword(*self))
+    }
+
+    fn contains(&self, val: &Token<'src>) -> bool
+    where
+        Token<'src>: PartialEq,
+    {
+        matches!(val, Token::Keyword(kwd) if kwd == self)
+    }
+
+    fn to_maybe_ref<'b>(item: Self::Item<'b>) -> chumsky::util::MaybeRef<'src, Token<'src>>
+    where
+        'me: 'b,
+    {
+        chumsky::util::Maybe::Val(item)
     }
 }
 
