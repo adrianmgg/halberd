@@ -1,29 +1,20 @@
-use chumsky::input::{BorrowInput, MappedInput, ValueInput};
+use chumsky::input::MappedInput;
 use chumsky::{extra, pratt::*, prelude::*};
 
-use crate::ast::{self, Expr};
-use crate::lexer::{self, Keyword, Token};
+use crate::ast::Expr;
+use crate::lexer::{Keyword, Token};
 
-type Err<'src> = chumsky::extra::Err<Rich<'src, Token<'src>, SimpleSpan>>;
-
-pub fn parser<'tokens, 'src: 'tokens, I>() -> impl Parser<
-    //
+pub fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
-    I,
-    // Spanned<Expr<'src>>,
-    Expr<'src>,
+    MappedInput<'tokens, Token<'src>, SimpleSpan, &'tokens [Spanned<Token<'src>>]>,
+    Spanned<Expr<'src>>,
     extra::Err<Rich<'tokens, Token<'src>, SimpleSpan>>,
->
-where
-    // I: ValueInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
-    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
-{
+> {
     recursive(|expr| {
-        // FIXME select_ref if end up using BorrowInput -- remove the other one when done
         let ident = select_ref! { Token::Ident(x) => *x };
-        // let ident = select! { Token::Ident(x) => x };
+        let ident_spanned = ident.spanned();
 
-        let expr_boxed = expr.map(Box::new);
+        let expr_boxed = expr.clone().map(Box::new);
 
         let atom = choice((
             // true
@@ -34,15 +25,36 @@ where
             ident.map(Expr::Var),
             // let name = ...
             just(Keyword::Let)
-                .ignore_then(ident)
+                .ignore_then(ident_spanned)
                 .then_ignore(just(Token::Equals))
                 .then(expr_boxed.clone())
                 .map(|(name, value)| Expr::Declaration { name, value }),
-        ));
+        ))
+        .boxed();
 
-        let fn_args = just(Keyword::True).to(());
-        let fn_def = just(Keyword::Function).ignore_then(fn_args.nested_in());
+        // // let fn_args = just(Keyword::True).to(());
+        // let fn_def = just(Keyword::Function)
+        //     .ignore_then(ident)
+        //     .then(
+        //         expr_boxed
+        //             .nested_in(select_ref! { Token::Braces(ts) = e => ts.split_spanned(e.span()) }),
+        //     )
+        //     .map(|(name, body)| Expr::FunctionDeclaration { name, body });
 
-        atom.boxed()
+        let block = expr
+            .clone()
+            .separated_by(just(Token::Semicolon))
+            .collect()
+            .then_ignore(just(Token::Semicolon))
+            .then(expr_boxed.clone().or_not())
+            .nested_in(select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) })
+            .map(|(exprs, last)| Expr::Block { exprs, last })
+            .boxed();
+
+        choice((
+            // <- load-bearing "please don't format this down to one line" comment
+            atom, block,
+        ))
+        .spanned()
     })
 }
