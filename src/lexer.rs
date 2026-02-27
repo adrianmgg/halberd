@@ -5,6 +5,8 @@ use chumsky::prelude::*;
 //       or do we do sub-enums like
 //         Keyword(Keyword), Ident(&str), Op(Op)
 
+// TODO: maybe move tokens to their own file separate from lexer?
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token<'src> {
     Keyword(Keyword),
