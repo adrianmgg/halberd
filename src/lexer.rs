@@ -5,13 +5,16 @@ use chumsky::prelude::*;
 //       or do we do sub-enums like
 //         Keyword(Keyword), Ident(&str), Op(Op)
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token<'src> {
     Keyword(Keyword),
     DollarIdent(&'src str),
     Ident(&'src str),
     Op { op: Op, lifts: usize },
     Equals,
+    Parens(Vec<Spanned<Self>>),
+    Braces(Vec<Spanned<Self>>),
+    Semicolon,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -76,43 +79,62 @@ pub fn lexer<'src>() -> impl Parser<
     Vec<Spanned<Token<'src>>>,
     chumsky::extra::Err<Rich<'src, char, SimpleSpan>>,
 > {
-    let dollar_ident = just('$')
-        .ignore_then(text::unicode::ident())
-        .map(Token::DollarIdent);
+    recursive(|token| {
+        let dollar_ident = just('$')
+            .ignore_then(text::unicode::ident())
+            .map(Token::DollarIdent);
 
-    let ident = text::unicode::ident().map(|ident| match ident {
-        "fn" => Token::Keyword(Keyword::Function),
-        "let" => Token::Keyword(Keyword::Let),
-        "if" => Token::Keyword(Keyword::If),
-        "else" => Token::Keyword(Keyword::Else),
-        "true" => Token::Keyword(Keyword::True),
-        "false" => Token::Keyword(Keyword::False),
-        other => Token::Ident(other),
-    });
+        let ident = text::unicode::ident().map(|ident| match ident {
+            "fn" => Token::Keyword(Keyword::Function),
+            "let" => Token::Keyword(Keyword::Let),
+            "if" => Token::Keyword(Keyword::If),
+            "else" => Token::Keyword(Keyword::Else),
+            "true" => Token::Keyword(Keyword::True),
+            "false" => Token::Keyword(Keyword::False),
+            other => Token::Ident(other),
+        });
 
-    let op = choice((
-        just('+').to(Op::Add),
-        just('-').to(Op::Subtract),
-        just("*.").to(Op::DotProduct),
-        just("*><").to(Op::CrossProduct),
-        just("*@").to(Op::MatrixMultiply),
-        just('*').to(Op::Multiply),
-        just('/').to(Op::Divide),
-    ))
-    .then(just('^').repeated().count())
-    .map(|(op, lifts)| Token::Op { op, lifts });
+        let op = choice((
+            just('+').to(Op::Add),
+            just('-').to(Op::Subtract),
+            just("*.").to(Op::DotProduct),
+            just("*><").to(Op::CrossProduct),
+            just("*@").to(Op::MatrixMultiply),
+            just('*').to(Op::Multiply),
+            just('/').to(Op::Divide),
+        ))
+        .then(just('^').repeated().count())
+        .map(|(op, lifts)| Token::Op { op, lifts });
 
-    let token = choice((op, ident, dollar_ident));
+        let comment = just("$.")
+            .then(any().and_is(just('\n').not()).repeated())
+            .padded();
 
-    let comment = just("$.")
-        .then(any().and_is(just('\n').not()).repeated())
-        .padded();
-
-    token
+        choice((
+            op,
+            ident,
+            dollar_ident,
+            token
+                .clone()
+                .repeated()
+                .collect()
+                .delimited_by(just('('), just(')'))
+                .labelled("parenthesized tokens")
+                .as_context()
+                .map(Token::Parens),
+            token
+                .repeated()
+                .collect()
+                .delimited_by(just('{'), just('}'))
+                .labelled("braced tokens")
+                .as_context()
+                .map(Token::Braces),
+        ))
         .spanned()
         .padded_by(comment.repeated())
         .padded()
         .recover_with(skip_then_retry_until(any().ignored(), end()))
-        .repeated()
-        .collect()
+    })
+    .repeated()
+    .collect()
 }
