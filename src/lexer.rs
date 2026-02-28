@@ -228,17 +228,17 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
 }
 
 #[rstest]
-#[case("1", Number { whole: 1, frac: None, kind: None })]
-#[case("1.2", Number { whole: 1, frac: Some(2), kind: None })]
-#[case("1u32", Number { whole: 1, frac: None, kind: Some(NumberKind::Unsigned(32)) })]
-#[case("1i32", Number { whole: 1, frac: None, kind: Some(NumberKind::Signed(32)) })]
-#[case("1r32", Number { whole: 1, frac: None, kind: Some(NumberKind::Float(32)) })]
-#[case("1.2u32", Number { whole: 1, frac: Some(2), kind: Some(NumberKind::Unsigned(32)) })]
-#[case("1_2_3__4____5", Number { whole: 12345, frac: None, kind: None })]
-#[case("16xdead_beef", Number { whole: 0xdead_beef, frac: None, kind: None })]
-#[case("16xdead.beef", Number { whole: 0xdead, frac: Some(0xbeef), kind: None })]
-#[case("16xdead.10x1234", Number { whole: 0xdead, frac: Some(1234), kind: None })]
-#[case("1234.16xbeef", Number { whole: 1234, frac: Some(0xbeef), kind: None })]
+#[case::simple("1", Number { whole: 1, frac: None, kind: None })]
+#[case::float("1.2", Number { whole: 1, frac: Some(2), kind: None })]
+#[case::kindsuffix_uint("1u32", Number { whole: 1, frac: None, kind: Some(NumberKind::Unsigned(32)) })]
+#[case::kindsuffix_int("1i32", Number { whole: 1, frac: None, kind: Some(NumberKind::Signed(32)) })]
+#[case::kindsuffix_float("1r32", Number { whole: 1, frac: None, kind: Some(NumberKind::Float(32)) })]
+#[case::float_with_type("1.2r32", Number { whole: 1, frac: Some(2), kind: Some(NumberKind::Float(32)) })]
+#[case::underscores("1_2_3__4____5", Number { whole: 12345, frac: None, kind: None })]
+#[case::radix_simple("16xdead_beef", Number { whole: 0xdead_beef, frac: None, kind: None })]
+#[case::radix_uniform("16xdead.beef", Number { whole: 0xdead, frac: Some(0xbeef), kind: None })]
+#[case::radix_different("16xdead.10x1234", Number { whole: 0xdead, frac: Some(1234), kind: None })]
+#[case::radix_different_implicitfirst("1234.16xbeef", Number { whole: 1234, frac: Some(0xbeef), kind: None })]
 fn test_lex_number(#[case] s: &'_ str, #[case] expected: Number) {
     assert_eq!(number_literal().parse(s).into_result(), Ok(expected));
 }
