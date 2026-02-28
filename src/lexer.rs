@@ -17,6 +17,7 @@ pub enum Token<'src> {
     Parens(Vec<Spanned<Self>>),
     Braces(Vec<Spanned<Self>>),
     Semicolon,
+    Number(Number),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -27,6 +28,20 @@ pub enum Keyword {
     Else,
     True,
     False,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct Number {
+    pub whole: u64,
+    pub frac: Option<u64>,
+    pub kind: Option<NumberKind>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum NumberKind {
+    Unsigned(u32),
+    Signed(u32),
+    Float(u32),
 }
 
 // for conciseness, allow using a Keyword variant as a 1-element Token sequence
@@ -74,12 +89,9 @@ pub enum Op {
     MatrixMultiply,
 }
 
-pub fn lexer<'src>() -> impl Parser<
-    'src,
-    &'src str,
-    Vec<Spanned<Token<'src>>>,
-    chumsky::extra::Err<Rich<'src, char, SimpleSpan>>,
-> {
+type LexExtra<'src> = chumsky::extra::Err<Rich<'src, char, SimpleSpan>>;
+
+pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, LexExtra<'src>> {
     recursive(|token| {
         let dollar_ident = just('$')
             .ignore_then(text::unicode::ident())
@@ -111,25 +123,31 @@ pub fn lexer<'src>() -> impl Parser<
             .then(any().and_is(just('\n').not()).repeated())
             .padded();
 
+        let parens = token
+            .clone()
+            .repeated()
+            .collect()
+            .delimited_by(just('('), just(')'))
+            .labelled("parenthesized tokens")
+            .as_context()
+            .map(Token::Parens);
+
+        let braces = token
+            .repeated()
+            .collect()
+            .delimited_by(just('{'), just('}'))
+            .labelled("braced tokens")
+            .as_context()
+            .map(Token::Braces);
+
         choice((
+            //
             op,
             ident,
             dollar_ident,
-            token
-                .clone()
-                .repeated()
-                .collect()
-                .delimited_by(just('('), just(')'))
-                .labelled("parenthesized tokens")
-                .as_context()
-                .map(Token::Parens),
-            token
-                .repeated()
-                .collect()
-                .delimited_by(just('{'), just('}'))
-                .labelled("braced tokens")
-                .as_context()
-                .map(Token::Braces),
+            number_literal().map(Token::Number),
+            parens,
+            braces,
         ))
         .spanned()
         .padded_by(comment.repeated())
@@ -138,4 +156,72 @@ pub fn lexer<'src>() -> impl Parser<
     })
     .repeated()
     .collect()
+}
+
+fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>> + Clone {
+    let radix_prefix = just('0')
+        .repeated()
+        .ignore_then(text::digits(10).to_slice())
+        .then_ignore(just('x'))
+        .validate(|s: &str, e, emitter| {
+            let radix = match s.parse::<u32>() {
+                Ok(radix) => radix,
+                Err(err) => {
+                    let msg = format!("invalid radix (failed to parse it as an int: {err:?})");
+                    emitter.emit(Rich::custom(e.span(), msg));
+                    10
+                }
+            };
+            if !(2..=16).contains(&radix) {
+                emitter.emit(Rich::custom(e.span(), "radix out of range (not 2-16)"));
+            }
+            radix
+        });
+
+    // one digit w/ specified radix, or None on a '_' separator
+    let digit_n = |radix| {
+        any()
+            .filter(move |c: &char| c.is_digit(radix) || matches!(c, '_'))
+            .map(move |c| c.to_digit(radix))
+    };
+    let n_n = move |radix| {
+        digit_n(radix)
+            .repeated()
+            .at_least(1)
+            .fold(0u64, move |acc, c| match c {
+                None => acc,
+                Some(digit) => acc * u64::from(radix) + u64::from(digit),
+            })
+    };
+
+    let kind_width = text::int(10).try_map(|s: &str, span| {
+        s.parse()
+            .map_err(|err| Rich::custom(span, format!("invalid width: {err:?}")))
+    });
+    let kind_suffix = choice((
+        just('u').ignore_then(kind_width).map(NumberKind::Unsigned),
+        just('i').ignore_then(kind_width).map(NumberKind::Signed),
+        just('r').ignore_then(kind_width).map(NumberKind::Float),
+    ));
+
+    custom(move |inp| {
+        // optionally parse a radix prefix, or 10 if unspecified
+        let radix_whole = inp.parse(radix_prefix.or(empty().to(10)))?;
+        let whole = inp.parse(n_n(radix_whole))?;
+
+        let dot = inp.parse(just('.').to(true).or(empty().to(false)))?;
+
+        // fractional part, iif there was a dot
+        let frac = dot
+            .then(|| {
+                // optionally parse a radix prefix, or the current radix if unspecified
+                let radix_frac = inp.parse(radix_prefix.or(empty().to(radix_whole)))?;
+                inp.parse(n_n(radix_frac))
+            })
+            .transpose()?;
+
+        let kind = inp.parse(kind_suffix.or_not())?;
+
+        Ok(Number { whole, frac, kind })
+    })
 }
