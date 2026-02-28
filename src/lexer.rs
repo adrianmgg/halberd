@@ -159,6 +159,41 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
     .collect()
 }
 
+#[cfg(test)]
+mod test_lex {
+    use super::{Token, lexer};
+    use chumsky::{Parser as _, span::Spanned};
+
+    macro_rules! lex_test {
+        ($name:ident, $s:literal, $m:pat_param) => {
+            #[test]
+            fn $name() {
+                let result = lexer().parse($s).into_result();
+                // FIXME use unstable `assert_matches`
+                assert!(matches!(result.as_deref(), $m), "got: {:?}", &result);
+            }
+        };
+    }
+
+    lex_test!(just_a_comment, "$. hello world", Ok([]));
+    lex_test!(
+        comment_after,
+        "a$. hello world",
+        Ok([Spanned {
+            inner: Token::Ident("a"),
+            ..
+        }])
+    );
+    lex_test!(
+        comment_prev_line,
+        "$. hello world\na",
+        Ok([Spanned {
+            inner: Token::Ident("a"),
+            ..
+        }])
+    );
+}
+
 fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>> + Clone {
     let radix_prefix = just('0')
         .repeated()
