@@ -195,19 +195,19 @@ mod test_lex {
 }
 
 fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>> + Clone {
+    // "1234x" -> 1234u32
     let radix_prefix = just('0')
         .repeated()
         .ignore_then(text::digits(10).to_slice())
         .then_ignore(just('x'))
         .validate(|s: &str, e, emitter| {
-            let radix = match s.parse::<u32>() {
-                Ok(radix) => radix,
-                Err(err) => {
-                    let msg = format!("invalid radix (failed to parse it as an int: {err:?})");
-                    emitter.emit(Rich::custom(e.span(), msg));
-                    10
-                }
-            };
+            let radix = s.parse::<u32>().unwrap_or_else(|err| {
+                let msg = format!("invalid radix (failed to parse it as an int: {err:?})");
+                emitter.emit(Rich::custom(e.span(), msg));
+                // this isn't actually a *default* value, but it should make the parser able to
+                // continue at least somewhat so that we can report this and any future errors.
+                10
+            });
             if !(2..=16).contains(&radix) {
                 emitter.emit(Rich::custom(e.span(), "radix out of range (not 2-16)"));
             }
