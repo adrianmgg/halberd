@@ -1,1 +1,4 @@
+# rust build outputs
 /target
+# nix build outputs
+/result

@@ -1,0 +1,9 @@
+[package]
+name = "halberd"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+chumsky = { version = "0.12.0", features = ["pratt"] }
+rstest = "0.26.1"

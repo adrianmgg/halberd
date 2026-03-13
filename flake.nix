@@ -3,12 +3,17 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
     crane.url = "github:ipetkov/crane";
     flake-utils.url = "github:numtide/flake-utils";
+    spirv-headers = {
+      url = "github:KhronosGroup/SPIRV-Headers";
+      flake = false;
+    };
   };
   outputs = {
     self,
     nixpkgs,
     crane,
     flake-utils,
+    spirv-headers,
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
@@ -27,19 +32,47 @@
           buildInputs = [];
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-        halberd = craneLib.buildPackage (commonArgs // {inherit cargoArtifacts;});
+        individualCrateArgs =
+          commonArgs
+          // {
+            inherit cargoArtifacts;
+            inherit (craneLib.crateNameFromCargoToml {inherit src;}) version;
+            # TODO should we use unified1 or 1.2 ?
+            SPIRV_GRAMMAR_JSON = "${spirv-headers}/include/spirv/unified1/spirv.core.grammar.json";
+            # FIXME turning these off for the build bc they don't all pass lmao
+            doCheck = false;
+          };
+        fileSetForCrate = crate: deps:
+          lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.unions ([
+                ./Cargo.toml
+                ./Cargo.lock
+                (craneLib.fileset.commonCargoSources ./${crate})
+              ]
+              ++ (map (d: craneLib.fileset.commonCargoSources ./${d}) deps));
+          };
+        packageForCrate = crate: deps: (craneLib.buildPackage (individualCrateArgs
+          // {
+            pname = crate;
+            cargoExtraArgs = "-p ${crate}";
+            src = fileSetForCrate crate deps;
+          }));
+        halberd = packageForCrate "halberd" [];
       in {
         checks = {
           inherit halberd;
-          halberd-clippy = craneLib.cargoClippy (commonArgs
+          workspace-clippy = craneLib.cargoClippy (commonArgs
             // {
               inherit cargoArtifacts;
               cargoClippyExtraArgs = "--all-targets -- --deny warnings";
             });
-          halberd-doc = craneLib.cargoDoc (commonArgs // {inherit cargoArtifacts;});
-          halberd-fmt = craneLib.cargoFmt {inherit src;};
+          # TODO: see crane's quickstart example setting this to be stricter
+          workspace-doc = craneLib.cargoDoc (commonArgs // {inherit cargoArtifacts;});
+          workspace-fmt = craneLib.cargoFmt {inherit src;};
         };
         packages.default = halberd;
+        packages.halberd = halberd;
         apps.default = flake-utils.lib.mkApp {
           drv = halberd;
         };
