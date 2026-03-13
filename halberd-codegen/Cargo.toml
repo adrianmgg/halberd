@@ -1,0 +1,11 @@
+[package]
+name = "halberd-codegen"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[build-dependencies]
+codegen = "0.3.0"
+eyre = "0.6.12"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
