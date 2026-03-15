@@ -1,6 +1,8 @@
 pub(crate) mod ast;
+pub(crate) mod generated;
 pub(crate) mod lexer;
 pub(crate) mod parser;
+pub(crate) mod spv;
 
 use chumsky::Parser;
 
