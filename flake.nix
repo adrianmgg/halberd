@@ -32,13 +32,14 @@
           buildInputs = [];
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        # TODO should we use unified1 or 1.2 ?
+        SPIRV_GRAMMAR_JSON = "${spirv-headers}/include/spirv/unified1/spirv.core.grammar.json";
         individualCrateArgs =
           commonArgs
           // {
             inherit cargoArtifacts;
             inherit (craneLib.crateNameFromCargoToml {inherit src;}) version;
-            # TODO should we use unified1 or 1.2 ?
-            SPIRV_GRAMMAR_JSON = "${spirv-headers}/include/spirv/unified1/spirv.core.grammar.json";
+            inherit SPIRV_GRAMMAR_JSON;
             # FIXME turning these off for the build bc they don't all pass lmao
             doCheck = false;
           };
@@ -80,6 +81,7 @@
         devShells.default = craneLib.devShell {
           # checks = self.checks.${system};
           packages = [];
+          inherit SPIRV_GRAMMAR_JSON;
         };
       }
     );
