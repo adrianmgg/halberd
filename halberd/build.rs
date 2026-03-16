@@ -56,13 +56,16 @@ fn main() -> eyre::Result<()> {
 fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::Instruction) {
     let name = ensure_valid_ident(&instruction.opname);
     let inst_struct = module.new_struct(&name).vis("pub").derive("Debug");
-    // FIXME operand quantifiers
-    // FIXME opcode
     // FIXME extensions
     // FIXME version
     if let Some(operands) = &instruction.operands {
         for operand in operands {
-            let op_type = format!("ok::{}", ensure_valid_ident(&operand.kind));
+            let mut op_type = format!("ok::{}", ensure_valid_ident(&operand.kind));
+            match operand.quantifier {
+                Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
+                Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
+                _ => {}
+            }
             let op_doc = operand
                 .name
                 .as_ref()
@@ -81,6 +84,13 @@ fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::
                 .unwrap_or_default(),
         ));
     });
+
+    let impl_instruction = module.new_impl(&name).impl_trait("crate::spv::Instruction");
+    impl_instruction
+        .new_fn("opcode")
+        .arg_ref_self()
+        .ret("u32")
+        .line(instruction.opcode);
 }
 
 fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar::OperandKind) {

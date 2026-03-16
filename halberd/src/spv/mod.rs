@@ -2,6 +2,10 @@ pub trait HasCapabilities {
     fn capabilities(&self) -> enumset::EnumSet<operand_kind::Capability>;
 }
 
+pub trait Instruction: HasCapabilities {
+    fn opcode(&self) -> u32;
+}
+
 pub mod operand_kind {
     pub use crate::generated::spv::operand_kind::*;
 
@@ -23,4 +27,8 @@ pub mod operand_kind {
     /// TODO
     #[derive(Debug)]
     pub struct LiteralSpecConstantOpInteger;
+}
+
+pub mod instruction {
+    pub use crate::generated::spv::instruction::*;
 }
