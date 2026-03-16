@@ -27,7 +27,7 @@ fn main() -> eyre::Result<()> {
     let m_spv = scope
         .new_module("spv")
         .vis("pub")
-        .attr("allow(non_camel_case_types)");
+        .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
 
     let m_operand_kinds = m_spv.new_module("operand_kind").vis("pub");
     // pull in the full namespace so we can define things manually there and have the
@@ -168,14 +168,19 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
                 .new_struct(ensure_valid_ident(&kind))
                 .vis("pub")
                 .doc(clean_doc(&doc))
+                .derive("Debug")
                 .tuple_field("pub u32");
         }
         spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
             // (these are each defined manually instead)
+            // TODO maybe write something here that will complain if the manually-defined struct is missing?
         }
         spv_grammar::OperandKind::Composite { kind, bases } => {
             // TODO should maybe just be a type alias to a tuple?
-            let t = module.new_struct(ensure_valid_ident(&kind)).vis("pub");
+            let t = module
+                .new_struct(ensure_valid_ident(&kind))
+                .vis("pub")
+                .derive("Debug");
             for base in &bases {
                 t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
             }
