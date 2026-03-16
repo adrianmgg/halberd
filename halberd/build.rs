@@ -28,6 +28,7 @@ fn main() -> eyre::Result<()> {
         .new_module("spv")
         .vis("pub")
         .attr("allow(non_camel_case_types)");
+
     let m_operand_kinds = m_spv.new_module("operand_kind").vis("pub");
     // pull in the full namespace so we can define things manually there and have the
     // codegen'd structs still see them
@@ -35,128 +36,151 @@ fn main() -> eyre::Result<()> {
         .scope()
         .raw("use crate::spv::operand_kind::*;");
     for operand_kind in grammar.operand_kinds {
-        match operand_kind {
-            // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
-            spv_grammar::OperandKind::BitEnum { kind, enumerants } => {
-                let name = ensure_valid_ident(&kind);
-                let e = m_operand_kinds
-                    .new_enum(&name)
-                    .vis("pub")
-                    .repr("u32")
-                    .derive("Debug")
-                    .derive("::enumset::EnumSetType")
-                    .r#macro(r##"#[enumset(repr = "u32", map = "mask")]"##);
-                let mut zero = None;
-                for enumerant in &enumerants {
-                    if enumerant.value == 0 {
-                        zero = Some(enumerant);
-                    } else {
-                        e.new_variant(ensure_valid_ident(&enumerant.enumerant))
-                            .discriminant(enumerant.value);
-                    }
-                }
-                if let Some(zero) = zero {
-                    m_operand_kinds.new_impl(&name).associate_const(
-                        &zero.enumerant,
-                        "::enumset::EnumSet<Self>",
-                        "::enumset::EnumSet::empty()",
-                        "pub",
-                    );
-                }
-            }
-            spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
-                let name = ensure_valid_ident(&kind);
-                let e = m_operand_kinds.new_enum(&name).vis("pub");
-                match kind.as_ref() {
-                    "Capability" => {
-                        e.repr("u32")
-                            .derive("Debug")
-                            .derive("::enumset::EnumSetType")
-                            .r#macro(r##"#[enumset(map = "compact")]"##);
-                    }
-                    _ => {
-                        e.repr("u32").derive("Debug").derive("Copy").derive("Clone");
-                    }
-                }
-                for enumerant in &enumerants {
-                    // FIXME need to use version,capabilities
-                    // TODO should use aliases
-                    e.new_variant(ensure_valid_ident(&enumerant.enumerant))
-                        .discriminant(enumerant.value);
-                }
+        codegen_operand_kind(m_operand_kinds, operand_kind);
+    }
 
-                let has_cap_impl = m_operand_kinds
-                    .new_impl(&name)
-                    .impl_trait("crate::spv::HasCapabilities");
-                let has_cap_fn = has_cap_impl
-                    .new_fn("capabilities")
-                    .arg_ref_self()
-                    .ret("::enumset::EnumSet<Capability>");
-                // group the variants which share capabilities together so we can write them in a
-                // single `a | b | c | d => foo` match case
-                let mut cap2cases = HashMap::new();
-                for enumerant in enumerants {
-                    let name = ensure_valid_ident(&enumerant.enumerant);
-                    let caps: Vec<_> = enumerant
-                        .capabilities
-                        .iter()
-                        .flatten()
-                        .map(|cap| format!("Capability::{}", ensure_valid_ident(cap)))
-                        .collect();
-                    let expr = match &caps[..] {
-                        [] => "::enumset::EnumSet::empty()".into(),
-                        [one] => format!("{one}.into()"),
-                        multiple => multiple.join(" | "),
-                    };
-                    cap2cases
-                        .entry(expr)
-                        .or_insert_with(Vec::new)
-                        .push(format!("Self::{name}"));
-                }
-                if cap2cases.len() == 1 {
-                    // if homogeneous, don't bother writing a match, just put the expr directly
-                    has_cap_fn.line(cap2cases.iter().next().unwrap().0);
-                } else {
-                    has_cap_fn.line("match self {");
-                    for (expr, patterns) in cap2cases.iter() {
-                        has_cap_fn.line(format!("    {} => {expr},", patterns.join(" | ")));
-                    }
-                    has_cap_fn.line("}");
-                }
-            }
-            spv_grammar::OperandKind::Id { kind, doc } => {
-                // "An <id> always consumes one word."
-                // - SPIR-V Specification v1.6r7, 2.2.1
-                // "For an operand kind belonging to this category, its value is an <id> definition or reference."
-                // - SPIR-V Machine-readable Grammar, 3.2
-                m_operand_kinds
-                    .new_struct(ensure_valid_ident(&kind))
-                    .vis("pub")
-                    .doc(clean_doc(&doc))
-                    .tuple_field("pub u32");
-            }
-            spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
-                // m_operand_kinds
-                //     .new_struct(ensure_valid_ident(&kind))
-                //     .vis("pub")
-                //     .doc(clean_doc(&doc));
-            }
-            spv_grammar::OperandKind::Composite { kind, bases } => {
-                // TODO should maybe just be a type alias to a tuple?
-                let t = m_operand_kinds
-                    .new_struct(ensure_valid_ident(&kind))
-                    .vis("pub");
-                for base in &bases {
-                    t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
-                }
-            }
-        }
+    let mod_instructions = m_spv.new_module("instruction").vis("pub");
+    mod_instructions
+        .scope()
+        .raw("use crate::spv::operand_kind as ok;");
+    for instruction in grammar.instructions {
+        codegen_instruction(mod_instructions, &instruction);
     }
 
     std::fs::write(&out_file, scope.to_string())
         .wrap_err_with(|| eyre!("failed to write generated code to {out_file:?}"))?;
 
     Ok(())
+}
+
+fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::Instruction) {
+    let name = ensure_valid_ident(&instruction.opname);
+    let mut inst_struct = module.new_struct(&name).vis("pub").derive("Debug");
+    if let Some(operands) = &instruction.operands {
+        for operand in operands {
+            let op_type = format!("ok::{}", ensure_valid_ident(&operand.kind));
+            let op_doc = operand
+                .name
+                .as_ref()
+                .map(|name| format!("#[doc = {name:?}]"))
+                .unwrap_or_default();
+            inst_struct.tuple_field(format!("{op_doc} {op_type}"));
+        }
+    }
+}
+
+fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar::OperandKind) {
+    match operand_kind {
+        // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
+        spv_grammar::OperandKind::BitEnum { kind, enumerants } => {
+            let name = ensure_valid_ident(&kind);
+            let e = module
+                .new_enum(&name)
+                .vis("pub")
+                .repr("u32")
+                .derive("Debug")
+                .derive("::enumset::EnumSetType")
+                .r#macro(r##"#[enumset(repr = "u32", map = "mask")]"##);
+            let mut zero = None;
+            for enumerant in &enumerants {
+                if enumerant.value == 0 {
+                    zero = Some(enumerant);
+                } else {
+                    e.new_variant(ensure_valid_ident(&enumerant.enumerant))
+                        .discriminant(enumerant.value);
+                }
+            }
+            if let Some(zero) = zero {
+                module.new_impl(&name).associate_const(
+                    &zero.enumerant,
+                    "::enumset::EnumSet<Self>",
+                    "::enumset::EnumSet::empty()",
+                    "pub",
+                );
+            }
+        }
+        spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
+            let name = ensure_valid_ident(&kind);
+            let e = module.new_enum(&name).vis("pub");
+            match kind.as_ref() {
+                "Capability" => {
+                    e.repr("u32")
+                        .derive("Debug")
+                        .derive("::enumset::EnumSetType")
+                        .r#macro(r##"#[enumset(map = "compact")]"##);
+                }
+                _ => {
+                    e.repr("u32").derive("Debug").derive("Copy").derive("Clone");
+                }
+            }
+            for enumerant in &enumerants {
+                // FIXME need to use version,capabilities
+                // TODO should use aliases
+                e.new_variant(ensure_valid_ident(&enumerant.enumerant))
+                    .discriminant(enumerant.value);
+            }
+
+            let has_cap_impl = module
+                .new_impl(&name)
+                .impl_trait("crate::spv::HasCapabilities");
+            let has_cap_fn = has_cap_impl
+                .new_fn("capabilities")
+                .arg_ref_self()
+                .ret("::enumset::EnumSet<Capability>");
+            // group the variants which share capabilities together so we can write them in a
+            // single `a | b | c | d => foo` match case
+            let mut cap2cases = HashMap::new();
+            for enumerant in enumerants {
+                let name = ensure_valid_ident(&enumerant.enumerant);
+                let caps: Vec<_> = enumerant
+                    .capabilities
+                    .iter()
+                    .flatten()
+                    .map(|cap| format!("Capability::{}", ensure_valid_ident(cap)))
+                    .collect();
+                let expr = match &caps[..] {
+                    [] => "::enumset::EnumSet::empty()".into(),
+                    [one] => format!("{one}.into()"),
+                    multiple => multiple.join(" | "),
+                };
+                cap2cases
+                    .entry(expr)
+                    .or_insert_with(Vec::new)
+                    .push(format!("Self::{name}"));
+            }
+            if cap2cases.len() == 1 {
+                // if homogeneous, don't bother writing a match, just put the expr directly
+                has_cap_fn.line(cap2cases.iter().next().unwrap().0);
+            } else {
+                has_cap_fn.line("match self {");
+                for (expr, patterns) in cap2cases.iter() {
+                    has_cap_fn.line(format!("    {} => {expr},", patterns.join(" | ")));
+                }
+                has_cap_fn.line("}");
+            }
+        }
+        spv_grammar::OperandKind::Id { kind, doc } => {
+            // "An <id> always consumes one word."
+            // - SPIR-V Specification v1.6r7, 2.2.1
+            // "For an operand kind belonging to this category, its value is an <id> definition or reference."
+            // - SPIR-V Machine-readable Grammar, 3.2
+            module
+                .new_struct(ensure_valid_ident(&kind))
+                .vis("pub")
+                .doc(clean_doc(&doc))
+                .tuple_field("pub u32");
+        }
+        spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
+            // (these are each defined manually instead)
+        }
+        spv_grammar::OperandKind::Composite { kind, bases } => {
+            // TODO should maybe just be a type alias to a tuple?
+            let t = module.new_struct(ensure_valid_ident(&kind)).vis("pub");
+            for base in &bases {
+                t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
+            }
+        }
+    }
 }
 
 fn ensure_valid_ident(s: &'_ str) -> Cow<'_, str> {
@@ -205,7 +229,27 @@ mod spv_grammar {
 
     #[derive(Deserialize)]
     pub struct Instruction {
-        // TODO
+        pub opname: String,
+        // TODO double check this is a u32
+        pub opcode: u32,
+        pub operands: Option<Vec<Operand>>,
+        pub capabilities: Option<Vec<String>>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Operand {
+        pub kind: String,
+        pub quantifier: Option<Quantifier>,
+        /// "A short descriptive name for this operand."
+        pub name: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    pub enum Quantifier {
+        #[serde(rename = "?")]
+        ZeroOrOne,
+        #[serde(rename = "*")]
+        ZeroOrMore,
     }
 
     #[derive(Deserialize)]
