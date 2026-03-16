@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["halberd", "halberd-codegen"]
+members = ["halberd"]
 
 [workspace.package]
 # TODO remove these from individual workspace members' configs
