@@ -28,8 +28,33 @@ fn main() -> eyre::Result<()> {
     let m_operand_kinds = m_spv.new_module("operand_kind").vis("pub");
     for operand_kind in grammar.operand_kinds {
         match operand_kind {
+            // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
             spv_grammar::OperandKind::BitEnum { kind, enumerants } => {
-                // TODO
+                let name = ensure_valid_ident(&kind);
+                let e = m_operand_kinds
+                    .new_enum(&name)
+                    .vis("pub")
+                    .repr("u32")
+                    .derive("Debug")
+                    .derive("::enumset::EnumSetType")
+                    .r#macro(r##"#[enumset(repr = "u32", map = "mask")]"##);
+                let mut zero = None;
+                for enumerant in &enumerants {
+                    if enumerant.value == 0 {
+                        zero = Some(enumerant);
+                    } else {
+                        e.new_variant(ensure_valid_ident(&enumerant.enumerant))
+                            .discriminant(enumerant.value);
+                    }
+                }
+                if let Some(zero) = zero {
+                    m_operand_kinds.new_impl(&name).associate_const(
+                        &zero.enumerant,
+                        "::enumset::EnumSet<Self>",
+                        "::enumset::EnumSet::empty()",
+                        "pub",
+                    );
+                }
             }
             spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
                 let name = ensure_valid_ident(&kind);
@@ -92,7 +117,15 @@ fn main() -> eyre::Result<()> {
                 }
             }
             spv_grammar::OperandKind::Id { kind, doc } => {
-                // TODO
+                // "An <id> always consumes one word."
+                // - SPIR-V Specification v1.6r7, 2.2.1
+                // "For an operand kind belonging to this category, its value is an <id> definition or reference."
+                // - SPIR-V Machine-readable Grammar, 3.2
+                m_operand_kinds
+                    .new_struct(ensure_valid_ident(&kind))
+                    .vis("pub")
+                    .doc(doc)
+                    .tuple_field("pub u32");
             }
             spv_grammar::OperandKind::Literal { kind, doc } => {
                 // TODO
@@ -193,11 +226,9 @@ mod spv_grammar {
         pub capabilities: Option<Vec<String>>,
     }
 
-    fn hex_literal<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    fn hex_literal<'de, D>(deserializer: D) -> Result<u32, D::Error>
     where
         D: de::Deserializer<'de>,
-        T: std::str::FromStr,
-        T::Err: std::fmt::Display,
     {
         use serde::de::Error;
         let s: String = Deserialize::deserialize(deserializer)?;
@@ -211,6 +242,6 @@ mod spv_grammar {
                 "hex literal must have characters after its '0x' prefix",
             ))?
             .0;
-        (s[third_char..]).parse().map_err(Error::custom)
+        u32::from_str_radix(&s[third_char..], 16).map_err(Error::custom)
     }
 }
