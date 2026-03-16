@@ -161,14 +161,10 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             braces,
         ));
 
-        choice((
-            // <- load bearing comment for format
-            // comment.to(None),
-            // any_token.spanned().map(Some),
-            any_token.spanned(),
-        ))
-        .padded()
-        .recover_with(skip_then_retry_until(any().ignored(), end()))
+        any_token
+            .spanned()
+            .padded()
+            .recover_with(skip_then_retry_until(any().ignored(), end()))
     });
     let maybe_token = comment.to(None).or(token_top_level.map(Some));
     maybe_token
