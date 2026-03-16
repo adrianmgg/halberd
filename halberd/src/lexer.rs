@@ -93,20 +93,29 @@ pub enum Op {
 type LexExtra<'src> = chumsky::extra::Err<Rich<'src, char, SimpleSpan>>;
 
 pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, LexExtra<'src>> {
-    recursive(|token| {
+    let comment = just("$.")
+        .then(any().and_is(just('\n').not()).repeated())
+        .padded()
+        .ignored()
+        .labelled("comment");
+
+    let token_top_level = recursive(|token| {
         let dollar_ident = just('$')
             .ignore_then(text::unicode::ident())
-            .map(Token::DollarIdent);
+            .map(Token::DollarIdent)
+            .labelled("dollar-keyword");
 
-        let ident = text::unicode::ident().map(|ident| match ident {
-            "fn" => Token::Keyword(Keyword::Function),
-            "let" => Token::Keyword(Keyword::Let),
-            "if" => Token::Keyword(Keyword::If),
-            "else" => Token::Keyword(Keyword::Else),
-            "true" => Token::Keyword(Keyword::True),
-            "false" => Token::Keyword(Keyword::False),
-            other => Token::Ident(other),
-        });
+        let ident = text::unicode::ident()
+            .map(|ident| match ident {
+                "fn" => Token::Keyword(Keyword::Function),
+                "let" => Token::Keyword(Keyword::Let),
+                "if" => Token::Keyword(Keyword::If),
+                "else" => Token::Keyword(Keyword::Else),
+                "true" => Token::Keyword(Keyword::True),
+                "false" => Token::Keyword(Keyword::False),
+                other => Token::Ident(other),
+            })
+            .labelled("identifier or keyword");
 
         let op = choice((
             just('+').to(Op::Add),
@@ -118,30 +127,31 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             just('/').to(Op::Divide),
         ))
         .then(just('^').repeated().count())
-        .map(|(op, lifts)| Token::Op { op, lifts });
+        .map(|(op, lifts)| Token::Op { op, lifts })
+        .labelled("operator");
 
-        let comment = just("$.")
-            .then(any().and_is(just('\n').not()).repeated())
-            .padded();
+        let maybe_token = comment.to(None).or(token.map(Some));
 
-        let parens = token
+        let parens = maybe_token
             .clone()
             .repeated()
-            .collect()
+            .collect::<FilteredCollector<_>>()
             .delimited_by(just('('), just(')'))
             .labelled("parenthesized tokens")
             .as_context()
+            .map(FilteredCollector::inner)
             .map(Token::Parens);
 
-        let braces = token
+        let braces = maybe_token
             .repeated()
-            .collect()
+            .collect::<FilteredCollector<_>>()
             .delimited_by(just('{'), just('}'))
             .labelled("braced tokens")
             .as_context()
+            .map(FilteredCollector::inner)
             .map(Token::Braces);
 
-        choice((
+        let any_token = choice((
             //
             op,
             ident,
@@ -149,18 +159,28 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             number_literal().map(Token::Number),
             parens,
             braces,
+        ));
+
+        choice((
+            // <- load bearing comment for format
+            // comment.to(None),
+            // any_token.spanned().map(Some),
+            any_token.spanned(),
         ))
-        .spanned()
-        .padded_by(comment.repeated())
         .padded()
         .recover_with(skip_then_retry_until(any().ignored(), end()))
-    })
-    .repeated()
-    .collect()
+    });
+    let maybe_token = comment.to(None).or(token_top_level.map(Some));
+    maybe_token
+        .repeated()
+        .collect()
+        .map(FilteredCollector::inner)
 }
 
 #[cfg(test)]
 mod test_lex {
+    use crate::lexer::Keyword;
+
     use super::{Token, lexer};
     use chumsky::{Parser as _, span::Spanned};
 
@@ -189,6 +209,28 @@ mod test_lex {
         "$. hello world\na",
         Ok([Spanned {
             inner: Token::Ident("a"),
+            ..
+        }])
+    );
+    lex_test!(
+        multiple_tokens_top_level,
+        "if if",
+        Ok([
+            Spanned {
+                inner: Token::Keyword(Keyword::If),
+                ..
+            },
+            Spanned {
+                inner: Token::Keyword(Keyword::If),
+                ..
+            }
+        ])
+    );
+    lex_test!(
+        multiple_tokens_tt,
+        "(if if)",
+        Ok([Spanned {
+            inner: Token::Parens(_),
             ..
         }])
     );
@@ -260,6 +302,7 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
 
         Ok(Number { whole, frac, kind })
     })
+    .labelled("number literal")
 }
 
 #[rstest]
@@ -276,4 +319,26 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
 #[case::radix_different_implicitfirst("1234.16xbeef", Number { whole: 1234, frac: Some(0xbeef), kind: None })]
 fn test_lex_number(#[case] s: &'_ str, #[case] expected: Number) {
     assert_eq!(number_literal().parse(s).into_result(), Ok(expected));
+}
+
+#[derive(Clone)]
+/// pretends to be a Vec<Option<T>>, but it only actually accepts the non-None values
+struct FilteredCollector<T>(Vec<T>);
+
+impl<T> FilteredCollector<T> {
+    fn inner(self) -> Vec<T> {
+        self.0
+    }
+}
+impl<T> Default for FilteredCollector<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+impl<T> chumsky::container::Container<Option<T>> for FilteredCollector<T> {
+    fn push(&mut self, item: Option<T>) {
+        if let Some(item) = item {
+            self.0.push(item);
+        }
+    }
 }
