@@ -1,5 +1,3 @@
-pub mod asm;
-
 pub trait HasCapabilities {
     fn capabilities(&self) -> enumset::EnumSet<operand_kind::Capability>;
 }
