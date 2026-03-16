@@ -24,8 +24,16 @@ fn main() -> eyre::Result<()> {
 
     let mut scope = codegen::Scope::new();
 
-    let m_spv = scope.new_module("spv").vis("pub");
+    let m_spv = scope
+        .new_module("spv")
+        .vis("pub")
+        .attr("allow(non_camel_case_types)");
     let m_operand_kinds = m_spv.new_module("operand_kind").vis("pub");
+    // pull in the full namespace so we can define things manually there and have the
+    // codegen'd structs still see them
+    m_operand_kinds
+        .scope()
+        .raw("use crate::spv::operand_kind::*;");
     for operand_kind in grammar.operand_kinds {
         match operand_kind {
             // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
@@ -124,14 +132,23 @@ fn main() -> eyre::Result<()> {
                 m_operand_kinds
                     .new_struct(ensure_valid_ident(&kind))
                     .vis("pub")
-                    .doc(doc)
+                    .doc(clean_doc(&doc))
                     .tuple_field("pub u32");
             }
-            spv_grammar::OperandKind::Literal { kind, doc } => {
-                // TODO
+            spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
+                // m_operand_kinds
+                //     .new_struct(ensure_valid_ident(&kind))
+                //     .vis("pub")
+                //     .doc(clean_doc(&doc));
             }
             spv_grammar::OperandKind::Composite { kind, bases } => {
-                // TODO
+                // TODO should maybe just be a type alias to a tuple?
+                let t = m_operand_kinds
+                    .new_struct(ensure_valid_ident(&kind))
+                    .vis("pub");
+                for base in &bases {
+                    t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
+                }
             }
         }
     }
@@ -154,6 +171,15 @@ fn ensure_valid_ident(s: &'_ str) -> Cow<'_, str> {
     s
 }
 
+fn clean_doc(s: &'_ str) -> Cow<'_, str> {
+    if s.contains("<id>") {
+        Cow::Owned(s.replace("<id>", "`<id>`"))
+    } else {
+        Cow::Borrowed(s)
+    }
+}
+
+#[allow(unused)]
 mod spv_grammar {
     use serde::{Deserialize, de};
 
