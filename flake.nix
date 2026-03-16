@@ -59,8 +59,7 @@
             cargoExtraArgs = "-p ${crate}";
             src = fileSetForCrate crate deps;
           }));
-        halberd-codegen = packageForCrate "halberd-codegen" [];
-        halberd = packageForCrate "halberd" ["halberd-codegen"];
+        halberd = packageForCrate "halberd" [];
       in {
         checks = {
           inherit halberd;
