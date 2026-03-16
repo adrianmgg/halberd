@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 chumsky = { version = "0.12.0", features = ["pratt"] }
+enumset = "1.1.10"
 rstest = "0.26.1"
 
 [build-dependencies]

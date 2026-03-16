@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, collections::HashMap, path::Path};
 
 use check_keyword::CheckKeyword;
 use eyre::{Context, eyre};
@@ -33,27 +33,35 @@ fn main() -> eyre::Result<()> {
             }
             spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
                 let name = ensure_valid_ident(&kind);
-                let e = m_operand_kinds
-                    .new_enum(&name)
-                    .vis("pub")
-                    .repr("u32")
-                    .derive("Debug")
-                    .derive("Copy")
-                    .derive("Clone");
+                let e = m_operand_kinds.new_enum(&name).vis("pub");
+                match kind.as_ref() {
+                    "Capability" => {
+                        e.repr("u32")
+                            .derive("Debug")
+                            .derive("::enumset::EnumSetType")
+                            .r#macro(r##"#[enumset(map = "compact")]"##);
+                    }
+                    _ => {
+                        e.repr("u32").derive("Debug").derive("Copy").derive("Clone");
+                    }
+                }
                 for enumerant in &enumerants {
                     // FIXME need to use version,capabilities
                     // TODO should use aliases
                     e.new_variant(ensure_valid_ident(&enumerant.enumerant))
                         .discriminant(enumerant.value);
                 }
+
                 let has_cap_impl = m_operand_kinds
                     .new_impl(&name)
                     .impl_trait("crate::spv::HasCapabilities");
                 let has_cap_fn = has_cap_impl
                     .new_fn("capabilities")
                     .arg_ref_self()
-                    .ret("impl Iterator<Item = Capability>")
-                    .line("match self {");
+                    .ret("::enumset::EnumSet<Capability>");
+                // group the variants which share capabilities together so we can write them in a
+                // single `a | b | c | d => foo` match case
+                let mut cap2cases = HashMap::new();
                 for enumerant in enumerants {
                     let name = ensure_valid_ident(&enumerant.enumerant);
                     let caps: Vec<_> = enumerant
@@ -62,12 +70,26 @@ fn main() -> eyre::Result<()> {
                         .flatten()
                         .map(|cap| format!("Capability::{}", ensure_valid_ident(cap)))
                         .collect();
-                    has_cap_fn.line(format!(
-                        "Self::{name} => [{}].iter().copied(),",
-                        caps.join(",")
-                    ));
+                    let expr = match &caps[..] {
+                        [] => "::enumset::EnumSet::empty()".into(),
+                        [one] => format!("{one}.into()"),
+                        multiple => multiple.join(" | "),
+                    };
+                    cap2cases
+                        .entry(expr)
+                        .or_insert_with(Vec::new)
+                        .push(format!("Self::{name}"));
                 }
-                has_cap_fn.line("}");
+                if cap2cases.len() == 1 {
+                    // if homogeneous, don't bother writing a match, just put the expr directly
+                    has_cap_fn.line(cap2cases.iter().next().unwrap().0);
+                } else {
+                    has_cap_fn.line("match self {");
+                    for (expr, patterns) in cap2cases.iter() {
+                        has_cap_fn.line(format!("    {} => {expr},", patterns.join(" | ")));
+                    }
+                    has_cap_fn.line("}");
+                }
             }
             spv_grammar::OperandKind::Id { kind, doc } => {
                 // TODO
