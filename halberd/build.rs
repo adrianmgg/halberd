@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, path::Path};
+use std::{borrow::Cow, collections::HashMap, fmt::Display, path::Path};
 
 use check_keyword::CheckKeyword;
 use eyre::{Context, eyre};
@@ -55,7 +55,11 @@ fn main() -> eyre::Result<()> {
 
 fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::Instruction) {
     let name = ensure_valid_ident(&instruction.opname);
-    let mut inst_struct = module.new_struct(&name).vis("pub").derive("Debug");
+    let inst_struct = module.new_struct(&name).vis("pub").derive("Debug");
+    // FIXME operand quantifiers
+    // FIXME opcode
+    // FIXME extensions
+    // FIXME version
     if let Some(operands) = &instruction.operands {
         for operand in operands {
             let op_type = format!("ok::{}", ensure_valid_ident(&operand.kind));
@@ -67,6 +71,16 @@ fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::
             inst_struct.tuple_field(format!("{op_doc} {op_type}"));
         }
     }
+    // FIXME does this need to include our operands' capabilities too?
+    codegen_hascapabilities(module, &name, |function| {
+        function.line(codegen_capability_set(
+            instruction
+                .capabilities
+                .as_ref()
+                .map(|v| &v[..])
+                .unwrap_or_default(),
+        ));
+    });
 }
 
 fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar::OperandKind) {
@@ -98,6 +112,7 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
                     "pub",
                 );
             }
+            // FIXME needs capabilities
         }
         spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
             let name = ensure_valid_ident(&kind);
@@ -120,44 +135,30 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
                     .discriminant(enumerant.value);
             }
 
-            let has_cap_impl = module
-                .new_impl(&name)
-                .impl_trait("crate::spv::HasCapabilities");
-            let has_cap_fn = has_cap_impl
-                .new_fn("capabilities")
-                .arg_ref_self()
-                .ret("::enumset::EnumSet<Capability>");
-            // group the variants which share capabilities together so we can write them in a
-            // single `a | b | c | d => foo` match case
-            let mut cap2cases = HashMap::new();
-            for enumerant in enumerants {
-                let name = ensure_valid_ident(&enumerant.enumerant);
-                let caps: Vec<_> = enumerant
-                    .capabilities
-                    .iter()
-                    .flatten()
-                    .map(|cap| format!("Capability::{}", ensure_valid_ident(cap)))
-                    .collect();
-                let expr = match &caps[..] {
-                    [] => "::enumset::EnumSet::empty()".into(),
-                    [one] => format!("{one}.into()"),
-                    multiple => multiple.join(" | "),
-                };
-                cap2cases
-                    .entry(expr)
-                    .or_insert_with(Vec::new)
-                    .push(format!("Self::{name}"));
-            }
-            if cap2cases.len() == 1 {
-                // if homogeneous, don't bother writing a match, just put the expr directly
-                has_cap_fn.line(cap2cases.iter().next().unwrap().0);
-            } else {
-                has_cap_fn.line("match self {");
-                for (expr, patterns) in cap2cases.iter() {
-                    has_cap_fn.line(format!("    {} => {expr},", patterns.join(" | ")));
+            codegen_hascapabilities(module, &name, |function| {
+                // group the variants which share capabilities together so we can write them in a
+                // single `a | b | c | d => foo` match case
+                let mut cap2cases = HashMap::new();
+                for enumerant in enumerants {
+                    let name = ensure_valid_ident(&enumerant.enumerant);
+                    let caps: Vec<_> = enumerant.capabilities.iter().flatten().collect();
+                    let expr = codegen_capability_set(&caps);
+                    cap2cases
+                        .entry(expr)
+                        .or_insert_with(Vec::new)
+                        .push(format!("Self::{name}"));
                 }
-                has_cap_fn.line("}");
-            }
+                if cap2cases.len() == 1 {
+                    // if homogeneous, don't bother writing a match, just put the expr directly
+                    function.line(cap2cases.iter().next().unwrap().0);
+                } else {
+                    function.line("match self {");
+                    for (expr, patterns) in cap2cases.iter() {
+                        function.line(format!("    {} => {expr},", patterns.join(" | ")));
+                    }
+                    function.line("}");
+                }
+            });
         }
         spv_grammar::OperandKind::Id { kind, doc } => {
             // "An <id> always consumes one word."
@@ -185,6 +186,34 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
                 t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
             }
         }
+    }
+}
+
+fn codegen_hascapabilities<F: FnOnce(&mut codegen::Function)>(
+    module: &mut codegen::Module,
+    target: &str,
+    f: F,
+) {
+    let has_cap_impl = module
+        .new_impl(target)
+        .impl_trait("crate::spv::HasCapabilities");
+    let has_cap_fn = has_cap_impl
+        .new_fn("capabilities")
+        .arg_ref_self()
+        .ret("::enumset::EnumSet<crate::spv::operand_kind::Capability>");
+    f(has_cap_fn);
+}
+
+fn codegen_capability_set<S: AsRef<str>>(capabilities: &[S]) -> String {
+    const PREFIX: &str = "crate::spv::operand_kind::Capability::";
+    match capabilities {
+        [] => "::enumset::EnumSet::empty()".into(),
+        [one] => format!("{PREFIX}{}.into()", ensure_valid_ident(one.as_ref())),
+        multiple => multiple
+            .iter()
+            .map(|s| format!("{PREFIX}{}", ensure_valid_ident(s.as_ref())))
+            .collect::<Vec<_>>()
+            .join(" | "),
     }
 }
 
