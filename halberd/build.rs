@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display, path::Path};
+use std::{borrow::Cow, collections::HashMap, path::Path};
 
 use check_keyword::CheckKeyword;
 use eyre::{Context, eyre};
@@ -22,40 +22,64 @@ fn main() -> eyre::Result<()> {
     let grammar: spv_grammar::Grammar =
         serde_json::from_reader(std::io::BufReader::new(grammar_file))?;
 
-    let mut scope = codegen::Scope::new();
+    let mut mods = Modules(codegen::Scope::new());
 
-    let m_spv = scope
-        .new_module("spv")
+    mods.ill()
         .vis("pub")
         .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
+    mods.spv()
+        .vis("pub")
+        .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
+    mods.spv_operandkind().vis("pub");
+    mods.spv_instruction()
+        .vis("pub")
+        .scope()
+        .raw("use crate::spv::operand_kind as ok;");
 
-    let m_operand_kinds = m_spv.new_module("operand_kind").vis("pub");
     // pull in the full namespace so we can define things manually there and have the
     // codegen'd structs still see them
-    m_operand_kinds
+    mods.spv_operandkind()
         .scope()
         .raw("use crate::spv::operand_kind::*;");
     for operand_kind in grammar.operand_kinds {
-        codegen_operand_kind(m_operand_kinds, operand_kind);
+        codegen_operand_kind(&mut mods, operand_kind);
     }
 
-    let mod_instructions = m_spv.new_module("instruction").vis("pub");
-    mod_instructions
-        .scope()
-        .raw("use crate::spv::operand_kind as ok;");
     for instruction in grammar.instructions {
-        codegen_instruction(mod_instructions, &instruction);
+        codegen_instruction(&mut mods, &instruction);
     }
 
-    std::fs::write(&out_file, scope.to_string())
+    std::fs::write(&out_file, mods.root().to_string())
         .wrap_err_with(|| eyre!("failed to write generated code to {out_file:?}"))?;
 
     Ok(())
 }
 
-fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::Instruction) {
+// quick wrapper so i dont have to write these manually and maybe typo stuff
+// is this the best way to do this? probably not. does it work? absolutely yes
+struct Modules(codegen::Scope);
+impl Modules {
+    fn root(&mut self) -> &mut codegen::Scope {
+        &mut self.0
+    }
+    fn ill(&mut self) -> &mut codegen::Module {
+        self.root().get_or_new_module("ill")
+    }
+    fn spv(&mut self) -> &mut codegen::Module {
+        self.root().get_or_new_module("spv")
+    }
+    fn spv_operandkind(&mut self) -> &mut codegen::Module {
+        self.spv().get_or_new_module("operand_kind")
+    }
+    fn spv_instruction(&mut self) -> &mut codegen::Module {
+        self.spv().get_or_new_module("instruction")
+    }
+}
+
+fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instruction) {
+    let r#mod = Modules::spv_instruction;
     let name = ensure_valid_ident(&instruction.opname);
-    let inst_struct = module.new_struct(&name).vis("pub").derive("Debug");
+    let inst_struct = r#mod(mods).new_struct(&name).vis("pub").derive("Debug");
     // FIXME extensions
     // FIXME version
     if let Some(operands) = &instruction.operands {
@@ -75,7 +99,7 @@ fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::
         }
     }
     // FIXME does this need to include our operands' capabilities too?
-    codegen_hascapabilities(module, &name, |function| {
+    codegen_hascapabilities(r#mod(mods), &name, |function| {
         function.line(codegen_capability_set(
             instruction
                 .capabilities
@@ -85,7 +109,9 @@ fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::
         ));
     });
 
-    let impl_instruction = module.new_impl(&name).impl_trait("crate::spv::Instruction");
+    let impl_instruction = r#mod(mods)
+        .new_impl(&name)
+        .impl_trait("crate::spv::Instruction");
     impl_instruction
         .new_fn("opcode")
         .arg_ref_self()
@@ -93,12 +119,13 @@ fn codegen_instruction(module: &mut codegen::Module, instruction: &spv_grammar::
         .line(instruction.opcode);
 }
 
-fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar::OperandKind) {
+fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKind) {
+    let r#mod = Modules::spv_operandkind;
     match operand_kind {
         // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
         spv_grammar::OperandKind::BitEnum { kind, enumerants } => {
             let name = ensure_valid_ident(&kind);
-            let e = module
+            let e = r#mod(mods)
                 .new_enum(&name)
                 .vis("pub")
                 .repr("u32")
@@ -115,7 +142,7 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
                 }
             }
             if let Some(zero) = zero {
-                module.new_impl(&name).associate_const(
+                r#mod(mods).new_impl(&name).associate_const(
                     &zero.enumerant,
                     "::enumset::EnumSet<Self>",
                     "::enumset::EnumSet::empty()",
@@ -126,7 +153,7 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
         }
         spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
             let name = ensure_valid_ident(&kind);
-            let e = module.new_enum(&name).vis("pub");
+            let e = r#mod(mods).new_enum(&name).vis("pub");
             match kind.as_ref() {
                 "Capability" => {
                     e.repr("u32")
@@ -145,7 +172,7 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
                     .discriminant(enumerant.value);
             }
 
-            codegen_hascapabilities(module, &name, |function| {
+            codegen_hascapabilities(r#mod(mods), &name, |function| {
                 // group the variants which share capabilities together so we can write them in a
                 // single `a | b | c | d => foo` match case
                 let mut cap2cases = HashMap::new();
@@ -175,7 +202,7 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
             // - SPIR-V Specification v1.6r7, 2.2.1
             // "For an operand kind belonging to this category, its value is an <id> definition or reference."
             // - SPIR-V Machine-readable Grammar, 3.2
-            module
+            r#mod(mods)
                 .new_struct(ensure_valid_ident(&kind))
                 .vis("pub")
                 .doc(clean_doc(&doc))
@@ -188,7 +215,7 @@ fn codegen_operand_kind(module: &mut codegen::Module, operand_kind: spv_grammar:
         }
         spv_grammar::OperandKind::Composite { kind, bases } => {
             // TODO should maybe just be a type alias to a tuple?
-            let t = module
+            let t = r#mod(mods)
                 .new_struct(ensure_valid_ident(&kind))
                 .vis("pub")
                 .derive("Debug");
