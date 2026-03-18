@@ -27,18 +27,19 @@ fn main() -> eyre::Result<()> {
     mods.iil()
         .vis("pub")
         .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
-    mods.iil_hierarchical().vis("pub");
-    mods.iil_flat().vis("pub");
+    mods.iil_hierarchical()
+        .vis("pub")
+        .scope()
+        .raw("use crate::iil::{self, h::{FlattenableToBlock, Block as HBlock}};");
+    mods.iil_flat().vis("pub").scope().raw("");
     mods.iil_h_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::spv::operand_kind as ok;")
-        .raw("use crate::iil;");
+        .raw("use crate::{spv::operand_kind as ok, iil};");
     mods.iil_f_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::spv::operand_kind as ok;")
-        .raw("use crate::iil;");
+        .raw("use crate::{spv::operand_kind as ok, iil};");
     mods.spv()
         .vis("pub")
         .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
@@ -57,9 +58,7 @@ fn main() -> eyre::Result<()> {
         codegen_operand_kind(&mut mods, operand_kind);
     }
 
-    for instruction in grammar.instructions {
-        codegen_instruction(&mut mods, &instruction);
-    }
+    codegen_instructions(&mut mods, grammar.instructions.as_slice());
 
     std::fs::write(&out_file, mods.root().to_string())
         .wrap_err_with(|| eyre!("failed to write generated code to {out_file:?}"))?;
@@ -81,13 +80,13 @@ impl Modules {
         self.iil().get_or_new_module("flat")
     }
     fn iil_f_instructions(&mut self) -> &mut codegen::Module {
-        self.iil_flat().get_or_new_module("instructions")
+        self.iil_flat().get_or_new_module("instruction")
     }
     fn iil_hierarchical(&mut self) -> &mut codegen::Module {
         self.iil().get_or_new_module("hierarchical")
     }
     fn iil_h_instructions(&mut self) -> &mut codegen::Module {
-        self.iil_hierarchical().get_or_new_module("instructions")
+        self.iil_hierarchical().get_or_new_module("instruction")
     }
     fn spv(&mut self) -> &mut codegen::Module {
         self.root().get_or_new_module("spv")
@@ -100,24 +99,99 @@ impl Modules {
     }
 }
 
-fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instruction) {
-    #[derive(Default)]
-    enum InstructionRetKind {
-        RetUntyped,
-        RetTyped,
-        #[default]
-        Void,
-    }
-    #[derive(Default)]
-    struct CodegenOperands<'a> {
-        ret_kind: InstructionRetKind,
-        other_operands: Vec<CodegenOperand<'a>>,
-    }
-    struct CodegenOperand<'a> {
-        raw: &'a spv_grammar::Operand,
-        name: String,
-    }
+struct CodegennedInstructionInfo<'a> {
+    name: String,
+    is_iil: bool,
+    operands: CodegenOperands<'a>,
+}
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum InstructionRetKind {
+    RetUntyped,
+    RetTyped,
+    Void,
+}
+struct CodegenOperands<'a> {
+    ret_kind: InstructionRetKind,
+    other_operands: Vec<CodegenOperand<'a>>,
+}
+struct CodegenOperand<'a> {
+    raw: &'a spv_grammar::Operand,
+    name: String,
+    is_expr: bool,
+}
 
+fn codegen_instructions(mods: &mut Modules, instructions: &[spv_grammar::Instruction]) {
+    let instruction_infos: Vec<_> = (instructions.iter())
+        .map(|i| codegen_instruction(mods, i))
+        .collect();
+
+    let h_op_expr = (mods.iil_hierarchical()).new_enum("OpExpr").vis("pub");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
+        .for_each(|ii| {
+            h_op_expr
+                .new_variant(&ii.name)
+                .tuple(format!("instruction::{}", ii.name));
+        });
+    let f_op_expr = mods.iil_flat().new_enum("OpExpr").vis("pub");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
+        .for_each(|ii| {
+            f_op_expr
+                .new_variant(&ii.name)
+                .tuple(format!("instruction::{}", ii.name));
+        });
+
+    let h_op_expr_ftb = (mods.iil_hierarchical())
+        .new_impl("OpExpr")
+        .impl_trait("FlattenableToBlock");
+    let h_op_expr_flatten = h_op_expr_ftb
+        .new_fn("flatten")
+        .arg_self()
+        .arg("ctx", "&mut iil::block::Ctx")
+        .ret("HBlock");
+    h_op_expr_flatten.line("match self {");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
+        .for_each(|ii| {
+            h_op_expr_flatten.line(format!(
+                "Self::{name}(o) => o.flatten(ctx),",
+                name = ii.name
+            ));
+        });
+    h_op_expr_flatten.line("}");
+
+    // FIXME need to handle the few RetUntyped ones too
+    //       although can probably mostly put that off until later since they're mostly just
+    //       debug-related and hardware-specific things i dont think we super need in 1.0
+
+    let h_op_void = mods.iil_hierarchical().new_enum("OpVoid").vis("pub");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
+        .for_each(|ii| {
+            h_op_void
+                .new_variant(&ii.name)
+                .tuple(format!("instruction::{}", ii.name));
+        });
+    let f_op_void = mods.iil_flat().new_enum("OpVoid").vis("pub");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
+        .for_each(|ii| {
+            f_op_void
+                .new_variant(&ii.name)
+                .tuple(format!("instruction::{}", ii.name));
+        });
+}
+
+fn codegen_instruction<'a>(
+    mods: &mut Modules,
+    instruction: &'a spv_grammar::Instruction,
+) -> CodegennedInstructionInfo<'a> {
     let cg_operands = instruction
         .operands
         .as_ref()
@@ -147,6 +221,7 @@ fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instructio
                 .map(|(idx, o)| CodegenOperand {
                     raw: o,
                     name: format!("op{idx}"),
+                    is_expr: matches!(o.kind.as_ref(), "IdRef"),
                 })
                 .collect();
             CodegenOperands {
@@ -154,7 +229,10 @@ fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instructio
                 other_operands,
             }
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|| CodegenOperands {
+            ret_kind: InstructionRetKind::Void,
+            other_operands: Vec::new(),
+        });
 
     let r#mod = Modules::spv_instruction;
     let name = ensure_valid_ident(&instruction.opname);
@@ -211,7 +289,7 @@ fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instructio
     );
 
     if should_generate_iil {
-        let hiil_struct = mods.iil_h_instructions().new_struct(&name);
+        let hiil_struct = mods.iil_h_instructions().new_struct(&name).vis("pub");
         for operand in &cg_operands.other_operands {
             // TODO avoid unnecissary Box when also wrapping in vec for * quantifier
             let mut op_type = match operand.raw.kind.as_ref() {
@@ -223,22 +301,78 @@ fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instructio
                 Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
                 _ => {}
             }
-            hiil_struct.new_field(&operand.name, op_type);
+            hiil_struct.new_field(&operand.name, op_type).vis("pub");
         }
 
-        let fiil_struct = mods.iil_f_instructions().new_struct(&name);
+        if cg_operands.ret_kind == InstructionRetKind::RetTyped {
+            let hiil_ftb_impl = mods
+                .iil_h_instructions()
+                .new_impl(&name)
+                .impl_trait("iil::h::FlattenableToBlock");
+            let hiil_ftb_flatten = hiil_ftb_impl
+                .new_fn("flatten")
+                .arg_self()
+                .arg("ctx", "&mut iil::block::Ctx")
+                .ret("iil::h::Block");
+            hiil_ftb_flatten.line("ctx.new_block(|b, ctx| {");
+            for cgo in &cg_operands.other_operands {
+                let oname: &str = cgo.name.as_ref();
+                match (cgo.is_expr, cgo.raw.quantifier) {
+                    (false, _) => {
+                        hiil_ftb_flatten.line(format!("    let {oname} = self.{oname};"));
+                    }
+                    (true, None) => {
+                        hiil_ftb_flatten.line(format!(
+                            "    let {oname} = b.push_valued_local(self.{oname}.flatten(ctx));"
+                        ));
+                    }
+                    (true, Some(spv_grammar::Quantifier::ZeroOrOne)) => {
+                        hiil_ftb_flatten.line(format!(
+                        "    let {oname} = self.{oname}.map(|o| b.push_valued_local(o.flatten(ctx)));"
+                    ));
+                    }
+                    (true, Some(spv_grammar::Quantifier::ZeroOrMore)) => {
+                        hiil_ftb_flatten.line(format!(
+                        "    let {oname} = self.{oname}.into_iter().map(|o| b.push_valued_local(o.flatten(ctx))).collect();"
+                    ));
+                    }
+                }
+            }
+            hiil_ftb_flatten.line(format!(
+                "    iil::f::OpExpr::{name}(iil::f::instruction::{name} {{",
+                name = &name
+            ));
+            // TODO do type passthru once the fields for that are implemented
+            hiil_ftb_flatten.line(
+                cg_operands
+                    .other_operands
+                    .iter()
+                    .map(|i| format!("{},", i.name))
+                    .collect::<String>(),
+            );
+            hiil_ftb_flatten.line("    })");
+            hiil_ftb_flatten.line("})");
+        }
+
+        let fiil_struct = mods.iil_f_instructions().new_struct(&name).vis("pub");
         for operand in &cg_operands.other_operands {
-            let mut op_type = match operand.raw.kind.as_ref() {
-                "IdRef" => "iil::block::BlockLocalRef".into(),
-                other => format!("ok::{other}"),
+            let mut op_type = match operand.is_expr {
+                true => "iil::block::BlockLocalRef".into(),
+                false => format!("ok::{}", operand.raw.kind),
             };
             match operand.raw.quantifier {
                 Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
                 Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
                 _ => {}
             }
-            fiil_struct.new_field(&operand.name, op_type);
+            fiil_struct.new_field(&operand.name, op_type).vis("pub");
         }
+    }
+
+    CodegennedInstructionInfo {
+        name: name.into(),
+        is_iil: should_generate_iil,
+        operands: cg_operands,
     }
 }
 
@@ -439,7 +573,7 @@ mod spv_grammar {
         pub name: Option<String>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Deserialize, Clone, Copy)]
     pub enum Quantifier {
         #[serde(rename = "?")]
         ZeroOrOne,
