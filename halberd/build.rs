@@ -27,6 +27,18 @@ fn main() -> eyre::Result<()> {
     mods.iil()
         .vis("pub")
         .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
+    mods.iil_hierarchical().vis("pub");
+    mods.iil_flat().vis("pub");
+    mods.iil_h_instructions()
+        .vis("pub")
+        .scope()
+        .raw("use crate::spv::operand_kind as ok;")
+        .raw("use crate::iil;");
+    mods.iil_f_instructions()
+        .vis("pub")
+        .scope()
+        .raw("use crate::spv::operand_kind as ok;")
+        .raw("use crate::iil;");
     mods.spv()
         .vis("pub")
         .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
@@ -65,11 +77,17 @@ impl Modules {
     fn iil(&mut self) -> &mut codegen::Module {
         self.root().get_or_new_module("iil")
     }
-    fn ill_flat(&mut self) -> &mut codegen::Module {
-        self.iil().get_or_new_module("f")
+    fn iil_flat(&mut self) -> &mut codegen::Module {
+        self.iil().get_or_new_module("flat")
     }
-    fn ill_hierarchical(&mut self) -> &mut codegen::Module {
-        self.iil().get_or_new_module("h")
+    fn iil_f_instructions(&mut self) -> &mut codegen::Module {
+        self.iil_flat().get_or_new_module("instructions")
+    }
+    fn iil_hierarchical(&mut self) -> &mut codegen::Module {
+        self.iil().get_or_new_module("hierarchical")
+    }
+    fn iil_h_instructions(&mut self) -> &mut codegen::Module {
+        self.iil_hierarchical().get_or_new_module("instructions")
     }
     fn spv(&mut self) -> &mut codegen::Module {
         self.root().get_or_new_module("spv")
@@ -83,25 +101,86 @@ impl Modules {
 }
 
 fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instruction) {
+    #[derive(Default)]
+    enum InstructionRetKind {
+        RetUntyped,
+        RetTyped,
+        #[default]
+        Void,
+    }
+    #[derive(Default)]
+    struct CodegenOperands<'a> {
+        ret_kind: InstructionRetKind,
+        other_operands: Vec<CodegenOperand<'a>>,
+    }
+    struct CodegenOperand<'a> {
+        raw: &'a spv_grammar::Operand,
+        name: String,
+    }
+
+    let cg_operands = instruction
+        .operands
+        .as_ref()
+        .map(|operands| {
+            // strip off the return value related operands
+            let (ret_kind, skip_by) = if operands.first().is_some_and(|o| o.kind == "IdResultType")
+                && operands.get(1).is_some_and(|o| o.kind == "IdResult")
+            {
+                (InstructionRetKind::RetTyped, 2)
+            } else if operands.first().is_some_and(|o| o.kind == "IdResult") {
+                (InstructionRetKind::RetUntyped, 1)
+            } else {
+                (InstructionRetKind::Void, 0)
+            };
+            // ensure the return-related operands look how we expect
+            operands.iter().take(skip_by).for_each(|o| {
+                assert!(matches!(o.kind.as_ref(), "IdResult" | "IdResultType"));
+                assert!(o.quantifier.is_none());
+            });
+            // ensure none of the remaining operands are return-related
+            if (operands.iter().skip(skip_by))
+                .any(|operand| matches!(operand.kind.as_ref(), "IdResult" | "IdResultType"))
+            {
+                panic!("unexpected placement of result-related operands in {instruction:?}");
+            }
+            let other_operands = (operands.iter().skip(skip_by).enumerate())
+                .map(|(idx, o)| CodegenOperand {
+                    raw: o,
+                    name: format!("op{idx}"),
+                })
+                .collect();
+            CodegenOperands {
+                ret_kind,
+                other_operands,
+            }
+        })
+        .unwrap_or_default();
+
     let r#mod = Modules::spv_instruction;
     let name = ensure_valid_ident(&instruction.opname);
     let inst_struct = r#mod(mods).new_struct(&name).vis("pub").derive("Debug");
     // FIXME extensions
     // FIXME version
-    if let Some(operands) = &instruction.operands {
-        for operand in operands {
-            let mut op_type = format!("ok::{}", ensure_valid_ident(&operand.kind));
-            match operand.quantifier {
-                Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
-                Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
-                _ => {}
-            }
-            let op_doc = operand
-                .name
-                .as_ref()
-                .map(|name| format!("#[doc = {name:?}]"))
-                .unwrap_or_default();
-            inst_struct.tuple_field(format!("{op_doc} {op_type}"));
+    match cg_operands.ret_kind {
+        InstructionRetKind::Void => {}
+        InstructionRetKind::RetUntyped => {
+            inst_struct.new_field("ret_id", "ok::IdResult");
+        }
+        InstructionRetKind::RetTyped => {
+            inst_struct.new_field("ret_id", "ok::IdResult");
+            inst_struct.new_field("ret_type", "ok::IdResultType");
+        }
+    }
+    for operand in &cg_operands.other_operands {
+        let mut op_type = format!("ok::{}", ensure_valid_ident(&operand.raw.kind));
+        match operand.raw.quantifier {
+            Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
+            Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
+            _ => {}
+        }
+        let field = inst_struct.new_field(&operand.name, op_type);
+        if let Some(doc) = operand.raw.name.as_ref() {
+            field.doc(doc);
         }
     }
     // FIXME does this need to include our operands' capabilities too?
@@ -123,6 +202,44 @@ fn codegen_instruction(mods: &mut Modules, instruction: &spv_grammar::Instructio
         .arg_ref_self()
         .ret("u32")
         .line(instruction.opcode);
+
+    // we handle types and constants separately & insert them in the final f-iil -> il phase,
+    // so no need to output those instructions at all
+    let should_generate_iil = !matches!(
+        instruction.class.as_ref(),
+        "Type-Declaration" | "Constant-Creation"
+    );
+
+    if should_generate_iil {
+        let hiil_struct = mods.iil_h_instructions().new_struct(&name);
+        for operand in &cg_operands.other_operands {
+            // TODO avoid unnecissary Box when also wrapping in vec for * quantifier
+            let mut op_type = match operand.raw.kind.as_ref() {
+                "IdRef" => "Box<iil::h::Expr>".into(),
+                other => format!("ok::{other}"),
+            };
+            match operand.raw.quantifier {
+                Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
+                Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
+                _ => {}
+            }
+            hiil_struct.new_field(&operand.name, op_type);
+        }
+
+        let fiil_struct = mods.iil_f_instructions().new_struct(&name);
+        for operand in &cg_operands.other_operands {
+            let mut op_type = match operand.raw.kind.as_ref() {
+                "IdRef" => "iil::block::BlockLocalRef".into(),
+                other => format!("ok::{other}"),
+            };
+            match operand.raw.quantifier {
+                Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
+                Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
+                _ => {}
+            }
+            fiil_struct.new_field(&operand.name, op_type);
+        }
+    }
 }
 
 fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKind) {
@@ -284,7 +401,7 @@ fn clean_doc(s: &'_ str) -> Cow<'_, str> {
 mod spv_grammar {
     use serde::{Deserialize, de};
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub struct Grammar {
         pub copyright: Vec<String>,
         #[serde(deserialize_with = "hex_literal")]
@@ -299,21 +416,22 @@ mod spv_grammar {
         pub operand_kinds: Vec<OperandKind>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub struct InstructionPrintingClass {
         // TODO
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub struct Instruction {
         pub opname: String,
         // TODO double check this is a u32
         pub opcode: u32,
         pub operands: Option<Vec<Operand>>,
         pub capabilities: Option<Vec<String>>,
+        pub class: String,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub struct Operand {
         pub kind: String,
         pub quantifier: Option<Quantifier>,
@@ -321,7 +439,7 @@ mod spv_grammar {
         pub name: Option<String>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub enum Quantifier {
         #[serde(rename = "?")]
         ZeroOrOne,
@@ -329,7 +447,7 @@ mod spv_grammar {
         ZeroOrMore,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     #[serde(tag = "category")]
     pub enum OperandKind {
         BitEnum {
@@ -354,7 +472,7 @@ mod spv_grammar {
         },
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub struct BitEnumerant {
         pub enumerant: String,
         pub aliases: Option<Vec<String>>,
@@ -364,7 +482,7 @@ mod spv_grammar {
         pub capabilities: Option<Vec<String>>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Debug, Deserialize)]
     pub struct ValueEnumerant {
         pub enumerant: String,
         pub aliases: Option<Vec<String>>,
