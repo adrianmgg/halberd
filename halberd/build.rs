@@ -24,7 +24,7 @@ fn main() -> eyre::Result<()> {
 
     let mut mods = Modules(codegen::Scope::new());
 
-    mods.ill()
+    mods.iil()
         .vis("pub")
         .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
     mods.spv()
@@ -62,8 +62,14 @@ impl Modules {
     fn root(&mut self) -> &mut codegen::Scope {
         &mut self.0
     }
-    fn ill(&mut self) -> &mut codegen::Module {
-        self.root().get_or_new_module("ill")
+    fn iil(&mut self) -> &mut codegen::Module {
+        self.root().get_or_new_module("iil")
+    }
+    fn ill_flat(&mut self) -> &mut codegen::Module {
+        self.iil().get_or_new_module("f")
+    }
+    fn ill_hierarchical(&mut self) -> &mut codegen::Module {
+        self.iil().get_or_new_module("h")
     }
     fn spv(&mut self) -> &mut codegen::Module {
         self.root().get_or_new_module("spv")
