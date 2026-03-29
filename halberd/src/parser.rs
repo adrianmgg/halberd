@@ -51,17 +51,21 @@ pub fn function_parser<'tokens, 'src: 'tokens>()
 -> impl Parser<'tokens, ParserInput<'tokens, 'src>, ast::Function<'src>, ParserErr<'tokens, 'src>> {
     let function_arg = ident()
         .then_ignore(just(Symbol::Colon))
-        .then(todo::<_, ast::Type, _>())
-        // FIXME handle spans better in here
-        .map(|(name, r#type)| ast::FunctionArg {
-            name: name.inner,
-            r#type,
-        });
-    let function_args = function_arg.separated_by(just(Symbol::Comma));
+        .then(todo::<_, ast::Type, _>().spanned())
+        .map(|(name, r#type)| ast::FunctionArg { name, r#type });
+    let function_args = function_arg
+        .separated_by(just(Symbol::Comma))
+        .collect()
+        .nested_in(parens());
+
+    let function_body = expr_parser();
+
     dollar_ident("fn")
-        .ignore_then(function_args.nested_in(parens()))
-        .then(braces());
-    todo()
+        .ignore_then(ident())
+        .then(function_args)
+        .then(function_body)
+        .map(|((name, args), body)| ast::Function { name, args, body })
+        .boxed()
 }
 
 pub fn expr_parser<'tokens, 'src: 'tokens>()
@@ -104,7 +108,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>()
             .then_ignore(just(Symbol::Semicolon))
             .then(expr_boxed.clone().or_not())
             .nested_in(select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) })
-            .map(|(exprs, last)| Expr::Block { exprs, last })
+            .map(|(exprs, last)| Expr::Block(ast::Block { exprs, last }))
             .boxed();
 
         choice((
