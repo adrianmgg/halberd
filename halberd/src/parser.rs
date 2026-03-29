@@ -57,6 +57,7 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
     dollar_ident("fn")
         .ignore_then(ident())
         .then(function_args)
+        .then_ignore(just(Symbol::Equals))
         .then(function_body)
         .map(|((name, args), body)| ast::Function { name, args, body })
         .boxed()
