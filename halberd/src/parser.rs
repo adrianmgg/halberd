@@ -10,16 +10,16 @@ type ParserInput<'tokens, 'src> =
     MappedInput<'tokens, Token<'src>, SimpleSpan, &'tokens [Spanned<Token<'src>>]>;
 type ParserErr<'tokens, 'src> = extra::Err<Rich<'tokens, Token<'src>, SimpleSpan>>;
 
-fn ident<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Cow<'src, str>>, ParserErr<'tokens, 'src>>
-{
+pub trait Parser<'tokens, 'src: 'tokens, T> =
+    chumsky::Parser<'tokens, ParserInput<'tokens, 'src>, T, ParserErr<'tokens, 'src>>;
+
+fn ident<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>> {
     select! { Token::Ident(x) => x }
         .map(Cow::Borrowed)
         .spanned()
 }
 
-fn any_dollar_ident<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Cow<'src, str>>, ParserErr<'tokens, 'src>>
+fn any_dollar_ident<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>>
 {
     select! { Token::DollarIdent(x) => x }
         .map(Cow::Borrowed)
@@ -28,27 +28,21 @@ fn any_dollar_ident<'tokens, 'src: 'tokens>()
 
 fn dollar_ident<'tokens, 'src: 'tokens>(
     ident: &'static str,
-) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Cow<'src, str>>, ParserErr<'tokens, 'src>>
-{
+) -> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>> {
     select! { Token::DollarIdent(x) if x == ident => x }
         .map(Cow::Borrowed)
         .spanned()
 }
 
-fn parens<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, ParserInput<'tokens, 'src>, ParserInput<'tokens, 'src>, ParserErr<'tokens, 'src>>
-{
+fn parens<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> {
     select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) }
 }
 
-fn braces<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, ParserInput<'tokens, 'src>, ParserInput<'tokens, 'src>, ParserErr<'tokens, 'src>>
-{
+fn braces<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> {
     select_ref! { Token::Braces(ts) = e => ts.split_spanned(e.span()) }
 }
 
-pub fn function_parser<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, ParserInput<'tokens, 'src>, ast::Function<'src>, ParserErr<'tokens, 'src>> {
+pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Function<'src>> {
     let function_arg = ident()
         .then_ignore(just(Symbol::Colon))
         .then(todo::<_, ast::Type, _>().spanned())
@@ -68,8 +62,7 @@ pub fn function_parser<'tokens, 'src: 'tokens>()
         .boxed()
 }
 
-pub fn expr_parser<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, ParserInput<'tokens, 'src>, Spanned<Expr<'src>>, ParserErr<'tokens, 'src>> {
+pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Expr<'src>>> {
     recursive(|expr| {
         let ident = select_ref! { Token::Ident(x) => *x };
         let ident_spanned = ident.spanned();
@@ -91,15 +84,6 @@ pub fn expr_parser<'tokens, 'src: 'tokens>()
                 .map(|(name, value)| Expr::Declaration { name, value }),
         ))
         .boxed();
-
-        // // let fn_args = just(Keyword::True).to(());
-        // let fn_def = just(Keyword::Function)
-        //     .ignore_then(ident)
-        //     .then(
-        //         expr_boxed
-        //             .nested_in(select_ref! { Token::Braces(ts) = e => ts.split_spanned(e.span()) }),
-        //     )
-        //     .map(|(name, body)| Expr::FunctionDeclaration { name, body });
 
         let block = expr
             .clone()

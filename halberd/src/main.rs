@@ -1,9 +1,11 @@
+#![feature(trait_alias)]
+
 pub(crate) mod ast;
 pub(crate) mod generated;
+pub(crate) mod iil;
 pub(crate) mod lexer;
 pub(crate) mod parser;
 pub(crate) mod spv;
-pub(crate) mod iil;
 
 use chumsky::Parser;
 
