@@ -11,14 +11,21 @@ use rstest::rstest;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token<'src> {
     Keyword(Keyword),
+    Symbol(Symbol),
     DollarIdent(&'src str),
     Ident(&'src str),
     Op { op: Op, lifts: usize },
-    Equals,
     Parens(Vec<Spanned<Self>>),
     Braces(Vec<Spanned<Self>>),
-    Semicolon,
     Number(Number),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Symbol {
+    Semicolon,
+    Colon,
+    Equals,
+    Comma,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -79,6 +86,38 @@ impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Keyword {
     }
 }
 
+// FIXME should prob macro this
+impl<'src> chumsky::container::OrderedSeq<'_, Token<'src>> for Symbol {}
+impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Symbol {
+    type Item<'a>
+        = Token<'src>
+    where
+        Self: 'a;
+
+    type Iter<'a>
+        = std::iter::Once<Token<'src>>
+    where
+        Self: 'a;
+
+    fn seq_iter(&self) -> Self::Iter<'me> {
+        std::iter::once(Token::Symbol(*self))
+    }
+
+    fn contains(&self, val: &Token<'src>) -> bool
+    where
+        Token<'src>: PartialEq,
+    {
+        matches!(val, Token::Symbol(kwd) if kwd == self)
+    }
+
+    fn to_maybe_ref<'b>(item: Self::Item<'b>) -> chumsky::util::MaybeRef<'src, Token<'src>>
+    where
+        'me: 'b,
+    {
+        chumsky::util::Maybe::Val(item)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Op {
     Add,
@@ -116,6 +155,16 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
                 other => Token::Ident(other),
             })
             .labelled("identifier or keyword");
+
+        let sym = choice((
+            just("=").to(Symbol::Equals),
+            just(",").to(Symbol::Comma),
+            just(";").to(Symbol::Semicolon),
+            just(":").to(Symbol::Colon),
+        ))
+        .map(Token::Symbol)
+        .labelled("non-operator symbol")
+        .boxed();
 
         let op = choice((
             just('+').to(Op::Add),
@@ -159,6 +208,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             number_literal().map(Token::Number),
             parens,
             braces,
+            sym,
         ));
 
         any_token
