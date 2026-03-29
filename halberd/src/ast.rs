@@ -1,4 +1,11 @@
-use chumsky::span::Spanned;
+use std::borrow::Cow;
+
+use chumsky::span::{SimpleSpan, Spanned};
+
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub(crate) struct FunctionDefinition<'a> {
+//     pub name: Cow<'a, str>,
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expr<'a> {
@@ -30,4 +37,19 @@ pub(crate) enum InfixOp {
     DotProduct,
     CrossProduct,
     MatrixMultiply,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Type {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Function<'a> {
+    pub(crate) name: Cow<'a, str>,
+    pub(crate) args: Vec<FunctionArg<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FunctionArg<'a> {
+    pub(crate) name: Cow<'a, str>,
+    pub(crate) r#type: Type,
 }
