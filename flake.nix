@@ -2,6 +2,10 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
     crane.url = "github:ipetkov/crane";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     flake-utils.url = "github:numtide/flake-utils";
     spirv-headers = {
       url = "github:KhronosGroup/SPIRV-Headers";
@@ -12,14 +16,18 @@
     self,
     nixpkgs,
     crane,
+    rust-overlay,
     flake-utils,
     spirv-headers,
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [(import rust-overlay)];
+        };
         lib = pkgs.lib;
-        craneLib = crane.mkLib pkgs;
+        craneLib = (crane.mkLib pkgs).overrideToolchain (p: p.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml);
         src = lib.cleanSourceWith {
           src = lib.cleanSource ./.;
           filter = orig_path: type:
