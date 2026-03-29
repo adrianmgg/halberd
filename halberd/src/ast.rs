@@ -1,11 +1,6 @@
 use std::borrow::Cow;
 
-use chumsky::span::{SimpleSpan, Spanned};
-
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub(crate) struct FunctionDefinition<'a> {
-//     pub name: Cow<'a, str>,
-// }
+use chumsky::span::Spanned;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Expr<'a> {
@@ -17,10 +12,6 @@ pub(crate) enum Expr<'a> {
     Declaration {
         name: Spanned<&'a str>,
         value: Box<Spanned<Self>>,
-    },
-    FunctionDeclaration {
-        name: Spanned<&'a str>,
-        body: Box<Spanned<Self>>,
     },
     Block(Block<'a>),
 }
