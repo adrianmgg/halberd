@@ -88,7 +88,9 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
                 .then_ignore(just(Symbol::Equals))
                 .then(expr_boxed.clone())
                 .map(|(name, value)| Expr::Declaration { name, value }),
-            // select! { Token::Number(n) =>  }
+            // select! { Token::Number(n) => n }
+            //     .map(|n| Expr::LiteralNumber(n))
+            //     .spanned(),
         ))
         .boxed();
 

@@ -7,7 +7,7 @@ use crate::types;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Expr<'a> {
     // FIXME temporary, need to fully implement literals
-    LiteralNumber(Spanned<LiteralNumber>),
+    LiteralNumber(LiteralNumber),
     LiteralBool(bool),
     InfixOp(Box<Spanned<Self>>, InfixOp, Box<Spanned<Self>>),
     Var(&'a str),
