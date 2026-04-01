@@ -52,6 +52,7 @@ pub(crate) enum InfixOp {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Function<'a> {
     pub(crate) name: Spanned<Cow<'a, str>>,
+    pub(crate) return_type: Spanned<types::Type>,
     pub(crate) args: Vec<FunctionArg<'a>>,
     // jury's out on if this is a good idea but i'm gonna try it
     pub(crate) body: Spanned<Expr<'a>>,
