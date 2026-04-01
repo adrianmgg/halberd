@@ -1,7 +1,12 @@
 use chumsky::prelude::*;
+use num_bigint::BigInt;
+use num_rational::BigRational;
 use rstest::rstest;
 
-use crate::types;
+use crate::{
+    types,
+    util::{impl_conversion_2_hop, impl_conversion_enum_variant},
+};
 
 // TODO: design decision - do we flatten these all out like e.g.
 //         Let, If, Else, Ident(&str), OpAdd, OpSubtract, ...
@@ -41,12 +46,22 @@ pub enum Keyword {
     False,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Number {
-    pub whole: u64,
-    pub frac: Option<u64>,
+    pub value: NumberValue,
     pub kind: Option<types::NumberKind>,
 }
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum NumberValue {
+    Int(BigInt),
+    Float(BigRational),
+}
+
+impl_conversion_enum_variant!(NumberValue::Int(BigInt));
+impl_conversion_enum_variant!(NumberValue::Float(BigRational));
+impl_conversion_2_hop!(i32 => BigInt => NumberValue);
+impl_conversion_2_hop!(u64 => BigInt => NumberValue);
 
 // for conciseness, allow using a Keyword variant as a 1-element Token sequence
 // containing the Token corresponding with itself,
@@ -387,7 +402,7 @@ fn r#type<'src>() -> impl Parser<'src, &'src str, types::Type, LexExtra<'src>> +
 }
 
 fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>> + Clone {
-    // "1234x" -> 1234u32
+    // "1234x" -> 1234
     let radix_prefix = just('0')
         .repeated()
         .ignore_then(text::digits(10).to_slice())
@@ -398,6 +413,7 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
                 emitter.emit(Rich::custom(e.span(), msg));
                 // this isn't actually a *default* value, but it should make the parser able to
                 // continue at least somewhat so that we can report this and any future errors.
+                // FIXME should maybe be 16 instead
                 10
             });
             if !(2..=16).contains(&radix) {
@@ -412,20 +428,21 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
             .filter(move |c: &char| c.is_digit(radix) || matches!(c, '_'))
             .map(move |c| c.to_digit(radix))
     };
+    // parses to (bigint value, number of digits)
     let n_n = move |radix| {
-        digit_n(radix)
-            .repeated()
-            .at_least(1)
-            .fold(0u64, move |acc, c| match c {
-                None => acc,
-                Some(digit) => acc * u64::from(radix) + u64::from(digit),
-            })
+        digit_n(radix).repeated().at_least(1).fold(
+            (BigInt::ZERO, 0u32),
+            move |(acc, ndigits), c| match c {
+                None => (acc, ndigits),
+                Some(digit) => (acc * radix + digit, ndigits + 1),
+            },
+        )
     };
 
     custom(move |inp| {
         // optionally parse a radix prefix, or 10 if unspecified
         let radix_whole = inp.parse(radix_prefix.or(empty().to(10)))?;
-        let whole = inp.parse(n_n(radix_whole))?;
+        let (whole, _) = inp.parse(n_n(radix_whole))?;
 
         let dot = inp.parse(just('.').to(true).or(empty().to(false)))?;
 
@@ -434,29 +451,38 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
             .then(|| {
                 // optionally parse a radix prefix, or the current radix if unspecified
                 let radix_frac = inp.parse(radix_prefix.or(empty().to(radix_whole)))?;
-                inp.parse(n_n(radix_frac))
+                let frac = inp.parse(n_n(radix_frac))?;
+                Ok((frac, radix_frac))
             })
             .transpose()?;
 
+        let value = match frac {
+            None => NumberValue::Int(whole),
+            Some(((frac, ndigits), radix)) => {
+                let n = BigRational::new(frac, BigInt::from(radix).pow(ndigits));
+                NumberValue::Float(n + whole)
+            }
+        };
+
         let kind = inp.parse(number_kind().or_not())?;
 
-        Ok(Number { whole, frac, kind })
+        Ok(Number { value, kind })
     })
     .labelled("number literal")
 }
 
 #[rstest]
-#[case::simple("1", Number { whole: 1, frac: None, kind: None })]
-#[case::float("1.2", Number { whole: 1, frac: Some(2), kind: None })]
-#[case::kindsuffix_uint("1u32", Number { whole: 1, frac: None, kind: Some(types::NumberKind::Integer(types::Integer::Unsigned(32))) })]
-#[case::kindsuffix_int("1i32", Number { whole: 1, frac: None, kind: Some(types::NumberKind::Integer(types::Integer::Signed(32))) })]
-#[case::kindsuffix_float("1r32", Number { whole: 1, frac: None, kind: Some(types::NumberKind::Float(types::Float{width: 32})) })]
-#[case::float_with_type("1.2r32", Number { whole: 1, frac: Some(2), kind: Some(types::NumberKind::Float(types::Float{width: 32})) })]
-#[case::underscores("1_2_3__4____5", Number { whole: 12345, frac: None, kind: None })]
-#[case::radix_simple("16xdead_beef", Number { whole: 0xdead_beef, frac: None, kind: None })]
-#[case::radix_uniform("16xdead.beef", Number { whole: 0xdead, frac: Some(0xbeef), kind: None })]
-#[case::radix_different("16xdead.10x1234", Number { whole: 0xdead, frac: Some(1234), kind: None })]
-#[case::radix_different_implicitfirst("1234.16xbeef", Number { whole: 1234, frac: Some(0xbeef), kind: None })]
+#[case::simple("1", Number { value: 1.into(), kind: None })]
+#[case::float("1.2", Number { value: NumberValue::Float(BigRational::new(12.into(), 10.into())), kind: None })]
+#[case::kindsuffix_uint("1u32", Number { value: 1.into(), kind: Some(types::NumberKind::Integer(types::Integer::Unsigned(32))) })]
+#[case::kindsuffix_int("1i32", Number { value: 1.into(), kind: Some(types::NumberKind::Integer(types::Integer::Signed(32))) })]
+#[case::kindsuffix_float("1r32", Number { value: 1.into(), kind: Some(types::NumberKind::Float(types::Float{width: 32})) })]
+#[case::float_with_type("1.2r32", Number { value: NumberValue::Float(BigRational::new(12.into(), 10.into())), kind: Some(types::NumberKind::Float(types::Float{width: 32})) })]
+#[case::underscores("1_2_3__4____5", Number { value: 12345.into(), kind: None })]
+#[case::radix_simple("16xdead_beef", Number { value: 0xdead_beef_u64.into(), kind: None })]
+#[case::radix_uniform("16xdead.beef", Number { value: NumberValue::Float(BigRational::new(3735928559u64.into(), 65536.into())), kind: None })]
+#[case::radix_different("16xdead.10x1234", Number { value: NumberValue::Float(BigRational::new(285025617.into(), 5000.into())), kind: None })]
+#[case::radix_different_implicitfirst("1234.16xbeef", Number { value: NumberValue::Float(BigRational::new(80920303.into(), 65536.into())), kind: None })]
 fn test_lex_number(#[case] s: &'_ str, #[case] expected: Number) {
     assert_eq!(number_literal().parse(s).into_result(), Ok(expected));
 }
