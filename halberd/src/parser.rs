@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 
 use chumsky::input::MappedInput;
-use chumsky::{extra, pratt::*, prelude::*};
+use chumsky::{Parser as _, extra, pratt::*, prelude::*};
+use num_rational::BigRational;
 
 use crate::ast::{self, Expr};
-use crate::lexer::{Keyword, Symbol, Token};
+use crate::lexer::{self, Keyword, Symbol, Token};
 use crate::types;
 
 type ParserInput<'tokens, 'src> =
@@ -75,6 +76,45 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
 
         let expr_boxed = expr.clone().map(Box::new);
 
+        let atom_number = select! { Token::Number(n) => n }.validate(
+            |lexer::Number { value, kind }, e, emitter| match kind {
+                None => {
+                    emitter.emit(Rich::custom(
+                        e.span(),
+                        "for now, all number literals must have explicit types",
+                    ));
+                    ast::Expr::LiteralInt(ast::LiteralInt {
+                        r#type: types::Integer::Signed(64),
+                        value: 1.into(),
+                    })
+                }
+                Some(types::NumberKind::Float(r#type)) => {
+                    ast::Expr::LiteralFloat(ast::LiteralFloat {
+                        r#type,
+                        value: match value {
+                            lexer::NumberValue::Float(v) => v,
+                            lexer::NumberValue::Int(v) => BigRational::new(v, 1.into()),
+                        },
+                    })
+                }
+                Some(types::NumberKind::Integer(r#type)) => {
+                    ast::Expr::LiteralInt(ast::LiteralInt {
+                        r#type,
+                        value: match value {
+                            lexer::NumberValue::Int(v) => v,
+                            lexer::NumberValue::Float(_) => {
+                                emitter.emit(Rich::custom(
+                                    e.span(),
+                                    "number with integer type can't have decimal place",
+                                ));
+                                1.into()
+                            }
+                        },
+                    })
+                }
+            },
+        );
+
         let atom = choice((
             // true
             just(Keyword::True).to(Expr::LiteralBool(true)),
@@ -88,9 +128,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
                 .then_ignore(just(Symbol::Equals))
                 .then(expr_boxed.clone())
                 .map(|(name, value)| Expr::Declaration { name, value }),
-            // select! { Token::Number(n) => n }
-            //     .map(|n| Expr::LiteralNumber(n))
-            //     .spanned(),
+            // numbers
+            atom_number,
         ))
         .boxed();
 
@@ -115,7 +154,6 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chumsky::Parser as _;
     use rstest::rstest;
 
     fn tokens_to_parser_input<'tokens, 'src: 'tokens>(
