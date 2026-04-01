@@ -63,9 +63,16 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
     dollar_ident("fn")
         .ignore_then(ident())
         .then(function_args)
+        .then_ignore(just(Symbol::Colon))
+        .then(r#type())
         .then_ignore(just(Symbol::Equals))
         .then(function_body)
-        .map(|((name, args), body)| ast::Function { name, args, body })
+        .map(|(((name, args), return_type), body)| ast::Function {
+            name,
+            return_type,
+            args,
+            body,
+        })
         .boxed()
 }
 
@@ -181,8 +188,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case("$fn foo() = (true)")]
-    #[case("$fn foo(x: u32, y: i32, z: r32) = (true)")]
+    #[case("$fn foo(): u32 = (1u32)")]
+    #[case("$fn foo(x: u32, y: i32, z: r32): u32 = (1u32)")]
     fn function_parses(#[case] src: &'_ str) {
         let tokens = crate::lexer::lexer()
             .parse(src)
