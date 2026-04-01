@@ -6,6 +6,8 @@ pub(crate) mod iil;
 pub(crate) mod lexer;
 pub(crate) mod parser;
 pub(crate) mod spv;
+pub(crate) mod types;
+pub(crate) mod util;
 
 use chumsky::Parser;
 

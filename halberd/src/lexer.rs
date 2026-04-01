@@ -1,6 +1,8 @@
 use chumsky::prelude::*;
 use rstest::rstest;
 
+use crate::types;
+
 // TODO: design decision - do we flatten these all out like e.g.
 //         Let, If, Else, Ident(&str), OpAdd, OpSubtract, ...
 //       or do we do sub-enums like
@@ -18,6 +20,7 @@ pub enum Token<'src> {
     Parens(Vec<Spanned<Self>>),
     Braces(Vec<Spanned<Self>>),
     Number(Number),
+    Type(types::Type),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -42,14 +45,7 @@ pub enum Keyword {
 pub struct Number {
     pub whole: u64,
     pub frac: Option<u64>,
-    pub kind: Option<NumberKind>,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum NumberKind {
-    Unsigned(u32),
-    Signed(u32),
-    Float(u32),
+    pub kind: Option<types::NumberKind>,
 }
 
 // for conciseness, allow using a Keyword variant as a 1-element Token sequence
@@ -144,7 +140,14 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             .map(Token::DollarIdent)
             .labelled("dollar-keyword");
 
-        let ident = text::unicode::ident()
+        let vaguely_ident_shaped = text::unicode::ident();
+
+        // need to also ensure that our types are a full ident in and of themselves
+        // TODO double check this enforces end too,
+        //      e.g. won't parse 'i32foo' to [Type(i32), Ident(foo)]
+        let r#type = r#type().and_is(vaguely_ident_shaped).map(Token::Type);
+
+        let ident = vaguely_ident_shaped
             .map(|ident| match ident {
                 "fn" => Token::Keyword(Keyword::Function),
                 "let" => Token::Keyword(Keyword::Let),
@@ -181,11 +184,17 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
         let maybe_token = comment.to(None).or(token.map(Some));
 
+        let open_paren = just('(').labelled("open paren");
+        let close_paren = just(')').labelled("closing paren");
+        let open_brace = just('{').labelled("open brace");
+        let close_brace = just('}').labelled("closing brace");
+
         let parens = maybe_token
             .clone()
             .repeated()
             .collect::<FilteredCollector<_>>()
-            .delimited_by(just('('), just(')'))
+            // NOTE: then_ignore(whitespace) is needed so e.g. `( )` doesn't fail to parse
+            .delimited_by(open_paren.then_ignore(text::whitespace()), close_paren)
             .labelled("parenthesized tokens")
             .as_context()
             .map(FilteredCollector::inner)
@@ -194,7 +203,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         let braces = maybe_token
             .repeated()
             .collect::<FilteredCollector<_>>()
-            .delimited_by(just('{'), just('}'))
+            .delimited_by(open_brace.then_ignore(text::whitespace()), close_brace)
             .labelled("braced tokens")
             .as_context()
             .map(FilteredCollector::inner)
@@ -203,6 +212,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         let any_token = choice((
             //
             op,
+            r#type,
             ident,
             dollar_ident,
             number_literal().map(Token::Number),
@@ -211,10 +221,8 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             sym,
         ));
 
-        any_token
-            .spanned()
-            .padded()
-            .recover_with(skip_then_retry_until(any().ignored(), end()))
+        any_token.spanned().padded()
+        // .recover_with(skip_then_retry_until(any().ignored(), end()))
     });
     let maybe_token = comment.to(None).or(token_top_level.map(Some));
     maybe_token
@@ -225,19 +233,24 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
 #[cfg(test)]
 mod test_lex {
-    use crate::lexer::Keyword;
+    use crate::{lexer::Keyword, types};
 
     use super::{Token, lexer};
     use chumsky::{Parser as _, span::Spanned};
 
     macro_rules! lex_test {
-        ($name:ident, $s:literal, $m:pat_param) => {
+        ($name:ident, $s:literal, $m:pat $(if $guard:expr)?) => {
             #[test]
             fn $name() {
                 let result = lexer().parse($s).into_result();
                 // FIXME use unstable `assert_matches`
-                assert!(matches!(result.as_deref(), $m), "got: {:?}", &result);
+                assert!(matches!(result.as_deref(), $m $(if $guard)?), "got: {:?}", &result);
             }
+        };
+    }
+    macro_rules! lex_test_single {
+        ($name:ident, $s:literal, $m:pat $(if $guard:expr)?) => {
+            lex_test!($name, $s, Ok([Spanned { inner: $m , .. }]) $(if $guard)?);
         };
     }
 
@@ -272,14 +285,105 @@ mod test_lex {
             }
         ])
     );
-    lex_test!(
-        multiple_tokens_tt,
-        "(if if)",
-        Ok([Spanned {
-            inner: Token::Parens(_),
-            ..
-        }])
+    lex_test_single!(multiple_tokens_tt, "(if if)", Token::Parens(_));
+    lex_test_single!(empty_tt, "()", Token::Parens(v) if v.is_empty());
+    lex_test_single!(empty_tt_ws, "( )", Token::Parens(v) if v.is_empty());
+
+    lex_test_single!(
+        type_u32,
+        "u32",
+        Token::Type(types::Type::Number(types::NumberKind::Integer(
+            types::Integer::Unsigned(32)
+        )))
     );
+    lex_test_single!(
+        type_r64,
+        "r64",
+        Token::Type(types::Type::Number(types::NumberKind::Float(
+            types::Float { width: 64 }
+        )))
+    );
+    lex_test_single!(
+        type_vec,
+        "i32v99",
+        Token::Type(types::Type::Vector(types::Vector {
+            component_type: types::NumberKind::Integer(types::Integer::Signed(32)),
+            component_count: 99,
+        }))
+    );
+    lex_test_single!(
+        type_mat,
+        "r32m12x34",
+        Token::Type(types::Type::Matrix(types::Matrix {
+            column_type: types::Vector {
+                component_type: types::NumberKind::Float(types::Float { width: 32 }),
+                component_count: 12,
+            },
+            column_count: 34,
+        }))
+    );
+}
+
+fn int_parsed<'src, T>(radix: u32) -> impl Parser<'src, &'src str, T, LexExtra<'src>> + Copy
+where
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Debug,
+{
+    text::int(radix).try_map(|s: &str, span| {
+        s.parse()
+            .map_err(|err| Rich::custom(span, format!("invalid width: {err:?}")))
+    })
+}
+
+fn number_kind<'src>() -> impl Parser<'src, &'src str, types::NumberKind, LexExtra<'src>> + Copy {
+    let kind_width = int_parsed(10);
+    choice((
+        just('u')
+            .ignore_then(kind_width)
+            .map(|width| types::NumberKind::Integer(types::Integer::Unsigned(width))),
+        just('i')
+            .ignore_then(kind_width)
+            .map(|width| types::NumberKind::Integer(types::Integer::Signed(width))),
+        just('r')
+            .ignore_then(kind_width)
+            .map(|width| types::NumberKind::Float(types::Float { width })),
+    ))
+}
+
+/// WARNING: this parser on its own will accept a type name which is part of an identifier, so
+///          needs to be chained with other parsers to be fully correct in the context of the
+///          overall lexer.
+fn r#type<'src>() -> impl Parser<'src, &'src str, types::Type, LexExtra<'src>> + Clone {
+    let n = int_parsed::<u32>(10);
+    let vector_suffix = just('v').ignore_then(n);
+    let matrix_suffix = just('m').ignore_then(n.then_ignore(just('x')).then(n));
+    let nk = number_kind();
+    choice((
+        // e.g. 'i32v4'
+        nk.then(vector_suffix)
+            .map(|(component_type, component_count)| {
+                types::Vector {
+                    component_type,
+                    component_count,
+                }
+                .into()
+            }),
+        // e.g. 'i32m3x2'
+        nk.then(matrix_suffix)
+            .map(|(component_type, (component_count, column_count))| {
+                types::Matrix {
+                    column_type: types::Vector {
+                        component_type,
+                        component_count,
+                    },
+                    column_count,
+                }
+                .into()
+            }),
+        // e.g. 'i32'
+        nk.map(Into::into),
+    ))
+    .boxed()
 }
 
 fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>> + Clone {
@@ -318,16 +422,6 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
             })
     };
 
-    let kind_width = text::int(10).try_map(|s: &str, span| {
-        s.parse()
-            .map_err(|err| Rich::custom(span, format!("invalid width: {err:?}")))
-    });
-    let kind_suffix = choice((
-        just('u').ignore_then(kind_width).map(NumberKind::Unsigned),
-        just('i').ignore_then(kind_width).map(NumberKind::Signed),
-        just('r').ignore_then(kind_width).map(NumberKind::Float),
-    ));
-
     custom(move |inp| {
         // optionally parse a radix prefix, or 10 if unspecified
         let radix_whole = inp.parse(radix_prefix.or(empty().to(10)))?;
@@ -344,7 +438,7 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
             })
             .transpose()?;
 
-        let kind = inp.parse(kind_suffix.or_not())?;
+        let kind = inp.parse(number_kind().or_not())?;
 
         Ok(Number { whole, frac, kind })
     })
@@ -354,10 +448,10 @@ fn number_literal<'src>() -> impl Parser<'src, &'src str, Number, LexExtra<'src>
 #[rstest]
 #[case::simple("1", Number { whole: 1, frac: None, kind: None })]
 #[case::float("1.2", Number { whole: 1, frac: Some(2), kind: None })]
-#[case::kindsuffix_uint("1u32", Number { whole: 1, frac: None, kind: Some(NumberKind::Unsigned(32)) })]
-#[case::kindsuffix_int("1i32", Number { whole: 1, frac: None, kind: Some(NumberKind::Signed(32)) })]
-#[case::kindsuffix_float("1r32", Number { whole: 1, frac: None, kind: Some(NumberKind::Float(32)) })]
-#[case::float_with_type("1.2r32", Number { whole: 1, frac: Some(2), kind: Some(NumberKind::Float(32)) })]
+#[case::kindsuffix_uint("1u32", Number { whole: 1, frac: None, kind: Some(types::NumberKind::Integer(types::Integer::Unsigned(32))) })]
+#[case::kindsuffix_int("1i32", Number { whole: 1, frac: None, kind: Some(types::NumberKind::Integer(types::Integer::Signed(32))) })]
+#[case::kindsuffix_float("1r32", Number { whole: 1, frac: None, kind: Some(types::NumberKind::Float(types::Float{width: 32})) })]
+#[case::float_with_type("1.2r32", Number { whole: 1, frac: Some(2), kind: Some(types::NumberKind::Float(types::Float{width: 32})) })]
 #[case::underscores("1_2_3__4____5", Number { whole: 12345, frac: None, kind: None })]
 #[case::radix_simple("16xdead_beef", Number { whole: 0xdead_beef, frac: None, kind: None })]
 #[case::radix_uniform("16xdead.beef", Number { whole: 0xdead, frac: Some(0xbeef), kind: None })]
