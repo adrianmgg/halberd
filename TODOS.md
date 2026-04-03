@@ -3,3 +3,4 @@
 - finalize how we want function bodies to look
 - the final bit of instruction -> binary serialization
 - handle instruction operand names in codegen
+- look at chumsky's WrappingSpan, use that maybe
