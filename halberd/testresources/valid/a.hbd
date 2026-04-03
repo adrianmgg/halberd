@@ -1,0 +1,7 @@
+$. some simple functions
+
+$fn foo(): u32 = (1u32)
+$fn bar(): u8  = (16xffu8)
+
+$. FIXME uncomment this one once we implement exprs fully
+$. $fn baz(a: i32, b: i32): i32 = (a + b)

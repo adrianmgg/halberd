@@ -1,0 +1,5 @@
+- should maybe move parser test input files to a more idiomatic location than `testresources`? if there is a standard or relatively common place rust projects tend to put that
+- fully implement expression parsing
+- finalize how we want function bodies to look
+- the final bit of instruction -> binary serialization
+- handle instruction operand names in codegen

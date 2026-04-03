@@ -76,6 +76,10 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
         .boxed()
 }
 
+pub fn file<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ()> {
+    function().repeated()
+}
+
 pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Expr<'src>>> {
     recursive(|expr| {
         let ident = select_ref! { Token::Ident(x) => *x };
@@ -160,6 +164,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use rstest::rstest;
 
@@ -197,6 +203,20 @@ mod tests {
             .expect("input should lex successfully");
         let input = tokens_to_parser_input(src, &tokens[..]);
         let _ = function()
+            .parse(input)
+            .into_result()
+            .expect("input should parse successfully");
+    }
+
+    #[rstest]
+    fn file_parses(#[files("testresources/valid/**/*.hbd")] path: PathBuf) {
+        let src = std::fs::read_to_string(&path).unwrap();
+        let tokens = crate::lexer::lexer()
+            .parse(&src)
+            .into_result()
+            .expect("input should lex successfully");
+        let input = tokens_to_parser_input(&src, &tokens[..]);
+        let _ = file()
             .parse(input)
             .into_result()
             .expect("input should parse successfully");
