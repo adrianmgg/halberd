@@ -12,6 +12,7 @@ type ParserInput<'tokens, 'src> =
     MappedInput<'tokens, Token<'src>, SimpleSpan, &'tokens [Spanned<Token<'src>>]>;
 type ParserErr<'tokens, 'src> = extra::Err<Rich<'tokens, Token<'src>, SimpleSpan>>;
 
+// FIXME should rename this from `Parser` and let that be `chumsky::Parser`
 pub trait Parser<'tokens, 'src: 'tokens, T> =
     chumsky::Parser<'tokens, ParserInput<'tokens, 'src>, T, ParserErr<'tokens, 'src>>;
 
@@ -77,10 +78,11 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
 }
 
 pub fn file<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ()> {
+    // FIXME implement fully
     function().repeated()
 }
 
-pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Expr<'src>>> {
+pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<'src>> {
     recursive(|expr| {
         let ident = select_ref! { Token::Ident(x) => *x };
         let ident_spanned = ident.spanned();
@@ -94,22 +96,26 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
                         e.span(),
                         "for now, all number literals must have explicit types",
                     ));
-                    ast::Expr::LiteralInt(ast::LiteralInt {
-                        r#type: types::Integer::Signed(64),
-                        value: 1.into(),
-                    })
+                    ast::Expr::LiteralInt(
+                        ast::LiteralInt {
+                            r#type: types::Integer::Signed(64),
+                            value: 1.into(),
+                        }
+                        .with_span(e.span()),
+                    )
                 }
-                Some(types::NumberKind::Float(r#type)) => {
-                    ast::Expr::LiteralFloat(ast::LiteralFloat {
+                Some(types::NumberKind::Float(r#type)) => ast::Expr::LiteralFloat(
+                    ast::LiteralFloat {
                         r#type,
                         value: match value {
                             lexer::NumberValue::Float(v) => v,
                             lexer::NumberValue::Int(v) => BigRational::new(v, 1.into()),
                         },
-                    })
-                }
-                Some(types::NumberKind::Integer(r#type)) => {
-                    ast::Expr::LiteralInt(ast::LiteralInt {
+                    }
+                    .with_span(e.span()),
+                ),
+                Some(types::NumberKind::Integer(r#type)) => ast::Expr::LiteralInt(
+                    ast::LiteralInt {
                         r#type,
                         value: match value {
                             lexer::NumberValue::Int(v) => v,
@@ -121,18 +127,25 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
                                 1.into()
                             }
                         },
-                    })
-                }
+                    }
+                    .with_span(e.span()),
+                ),
             },
         );
 
         let atom = choice((
             // true
-            just(Keyword::True).to(Expr::LiteralBool(true)),
+            just(Keyword::True)
+                .to(true)
+                .spanned()
+                .map(Expr::LiteralBool),
             // false
-            just(Keyword::False).to(Expr::LiteralBool(false)),
+            just(Keyword::False)
+                .to(false)
+                .spanned()
+                .map(Expr::LiteralBool),
             // foo
-            ident.map(Expr::Var),
+            ident.spanned().map(Expr::Var),
             // let name = ...
             just(Keyword::Let)
                 .ignore_then(ident_spanned)
@@ -151,14 +164,21 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spann
             .then_ignore(just(Symbol::Semicolon))
             .then(expr_boxed.clone().or_not())
             .nested_in(select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) })
-            .map(|(exprs, last)| Expr::Block(ast::Block { exprs, last }))
+            .map(|(exprs, last)| ast::Block { exprs, last })
+            .spanned()
+            .map(Expr::Block)
             .boxed();
+
+        // let op = |op, l| select! { Token::Op{ op: o, lifts: 0 } if o == op => () };
+        // let ops = vec![infix(left(5), op(Op::Add), |l, _, r, _| {
+        //     Expr::InfixOp(Box::new(l), ast::InfixOp::Add, Box::new(r))
+        // })];
 
         choice((
             // <- load-bearing "please don't format this down to one line" comment
             atom, block,
         ))
-        .spanned()
+        // .pratt(ops)
     })
 }
 
