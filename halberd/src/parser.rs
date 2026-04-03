@@ -169,16 +169,43 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             .map(Expr::Block)
             .boxed();
 
-        // let op = |op, l| select! { Token::Op{ op: o, lifts: 0 } if o == op => () };
-        // let ops = vec![infix(left(5), op(Op::Add), |l, _, r, _| {
-        //     Expr::InfixOp(Box::new(l), ast::InfixOp::Add, Box::new(r))
-        // })];
+        let op = |op, lifts| {
+            select! { Token::Op{ op: o, lifts: l } if op == o && lifts == l => () }
+                .spanned()
+                .to_span()
+        };
+        macro_rules! mk_ops {
+            (infix($assoc:ident ($assoc_n:literal)), $op:ident) => {
+                mk_ops!(infix($assoc($assoc_n)), lexer::Op::$op, ast::InfixOp::$op)
+            };
+            (infix($assoc:ident ($assoc_n:literal)), $op_tok:expr, $op_ast:expr) => {
+                (
+                    infix($assoc($assoc_n), op($op_tok, 0), |l, o, r, _| {
+                        Expr::InfixOp(Box::new(l), $op_ast.with_span(o), Box::new(r))
+                    }),
+                    infix($assoc(1), op($op_tok, 1), |l, o, r, _| {
+                        Expr::InfixOp(Box::new(l), $op_ast.with_span(o), Box::new(r))
+                    }),
+                    infix($assoc(0), op($op_tok, 2), |l, o, r, _| {
+                        Expr::InfixOp(Box::new(l), $op_ast.with_span(o), Box::new(r))
+                    }),
+                )
+            };
+        }
 
         choice((
             // <- load-bearing "please don't format this down to one line" comment
             atom, block,
         ))
-        // .pratt(ops)
+        .pratt((
+            mk_ops!(infix(left(5)), Add),
+            mk_ops!(infix(left(5)), Subtract),
+            mk_ops!(infix(left(4)), Multiply),
+            mk_ops!(infix(left(4)), Divide),
+            mk_ops!(infix(left(4)), DotProduct),
+            mk_ops!(infix(left(4)), CrossProduct),
+            mk_ops!(infix(left(4)), MatrixMultiply),
+        ))
     })
 }
 
