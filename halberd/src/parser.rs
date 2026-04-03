@@ -4,7 +4,7 @@ use chumsky::input::MappedInput;
 use chumsky::{Parser as _, extra, pratt::*, prelude::*};
 use num_rational::BigRational;
 
-use crate::ast::{self, Expr};
+use crate::ast::{self, Expr, ExprData};
 use crate::lexer::{self, Keyword, Symbol, Token};
 use crate::types;
 
@@ -89,14 +89,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
 
         let expr_boxed = expr.clone().map(Box::new);
 
-        let atom_number = select! { Token::Number(n) => n }.validate(
-            |lexer::Number { value, kind }, e, emitter| match kind {
+        let atom_number = select! { Token::Number(n) => n }
+            .validate(|lexer::Number { value, kind }, e, emitter| match kind {
                 None => {
                     emitter.emit(Rich::custom(
                         e.span(),
                         "for now, all number literals must have explicit types",
                     ));
-                    ast::Expr::LiteralInt(
+                    ExprData::LiteralInt(
                         ast::LiteralInt {
                             r#type: types::Integer::Signed(64),
                             value: 1.into(),
@@ -104,7 +104,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                         .with_span(e.span()),
                     )
                 }
-                Some(types::NumberKind::Float(r#type)) => ast::Expr::LiteralFloat(
+                Some(types::NumberKind::Float(r#type)) => ExprData::LiteralFloat(
                     ast::LiteralFloat {
                         r#type,
                         value: match value {
@@ -114,7 +114,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                     }
                     .with_span(e.span()),
                 ),
-                Some(types::NumberKind::Integer(r#type)) => ast::Expr::LiteralInt(
+                Some(types::NumberKind::Integer(r#type)) => ExprData::LiteralInt(
                     ast::LiteralInt {
                         r#type,
                         value: match value {
@@ -130,28 +130,31 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                     }
                     .with_span(e.span()),
                 ),
-            },
-        );
+            })
+            .map(Expr::from);
 
         let atom = choice((
             // true
             just(Keyword::True)
                 .to(true)
                 .spanned()
-                .map(Expr::LiteralBool),
+                .map(ExprData::LiteralBool)
+                .map(Expr::from),
             // false
             just(Keyword::False)
                 .to(false)
                 .spanned()
-                .map(Expr::LiteralBool),
+                .map(ExprData::LiteralBool)
+                .map(Expr::from),
             // foo
-            ident.spanned().map(Expr::Var),
+            ident.spanned().map(ExprData::Var).map(Expr::from),
             // let name = ...
             just(Keyword::Let)
                 .ignore_then(ident_spanned)
                 .then_ignore(just(Symbol::Equals))
                 .then(expr_boxed.clone())
-                .map(|(name, value)| Expr::Declaration { name, value }),
+                .map(|(name, value)| ExprData::Declaration { name, value })
+                .map(Expr::from),
             // numbers
             atom_number,
         ))
@@ -163,10 +166,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             .collect()
             .then_ignore(just(Symbol::Semicolon))
             .then(expr_boxed.clone().or_not())
-            .nested_in(select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) })
+            .nested_in(braces())
             .map(|(exprs, last)| ast::Block { exprs, last })
             .spanned()
-            .map(Expr::Block)
+            .map(|block| Expr::from(ExprData::Block(block)))
             .boxed();
 
         let op = |op, lifts| {
@@ -181,13 +184,25 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             (infix($assoc:ident ($assoc_n:literal)), $op_tok:expr, $op_ast:expr) => {
                 (
                     infix($assoc($assoc_n), op($op_tok, 0), |l, o, r, _| {
-                        Expr::InfixOp(Box::new(l), $op_ast.with_span(o), Box::new(r))
+                        Expr::from(ExprData::InfixOp(
+                            Box::new(l),
+                            $op_ast.with_span(o),
+                            Box::new(r),
+                        ))
                     }),
                     infix($assoc(1), op($op_tok, 1), |l, o, r, _| {
-                        Expr::InfixOp(Box::new(l), $op_ast.with_span(o), Box::new(r))
+                        Expr::from(ExprData::InfixOp(
+                            Box::new(l),
+                            $op_ast.with_span(o),
+                            Box::new(r),
+                        ))
                     }),
                     infix($assoc(0), op($op_tok, 2), |l, o, r, _| {
-                        Expr::InfixOp(Box::new(l), $op_ast.with_span(o), Box::new(r))
+                        Expr::from(ExprData::InfixOp(
+                            Box::new(l),
+                            $op_ast.with_span(o),
+                            Box::new(r),
+                        ))
                     }),
                 )
             };
