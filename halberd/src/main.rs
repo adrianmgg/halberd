@@ -1,6 +1,7 @@
 #![feature(trait_alias)]
 
 pub(crate) mod ast;
+pub(crate) mod compiler;
 pub(crate) mod generated;
 pub(crate) mod iil;
 pub(crate) mod lexer;
