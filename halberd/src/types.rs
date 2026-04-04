@@ -1,7 +1,10 @@
 use crate::util::{impl_conversion_2_hop, impl_conversion_enum_variant};
 
+// FIXME can't currently represent boolean vectors
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Type {
+    Bool,
     Number(NumberKind),
     Vector(Vector),
     Matrix(Matrix),
