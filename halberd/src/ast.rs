@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::borrow::Cow;
 
 use chumsky::span::Spanned;
 use num_bigint::BigInt;
@@ -21,7 +21,20 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
         fns: &SidecarFns<MapExpr>,
     ) -> Self::WithOtherSidecar<S2>;
     // FIXME name
-    // fn iteratively_adjust_sidecars<>
+    fn modify_some_sidecars<AdjustExpr: Fn(&ExprData<'a, S>, &mut S::Expr) -> bool>(
+        &mut self,
+        fns: &SidecarFns<AdjustExpr>,
+    ) -> usize;
+    fn iteratively_modify_sidecars<AdjustExpr: Fn(&ExprData<'a, S>, &mut S::Expr) -> bool>(
+        &mut self,
+        fns: &SidecarFns<AdjustExpr>,
+    ) {
+        loop {
+            if self.modify_some_sidecars(fns) == 0 {
+                break;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +87,38 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
             },
         }
     }
+
+    fn modify_some_sidecars<
+        AdjustExpr: Fn(&ExprData<'a, S>, &mut <S as Sidecars>::Expr) -> bool,
+    >(
+        &mut self,
+        fns: &SidecarFns<AdjustExpr>,
+    ) -> usize {
+        (if (fns.expr)(&self.data, &mut self.sidecar) {
+            1
+        } else {
+            0
+        }) + (match &mut self.data {
+            ExprData::LiteralInt(_) => 0,
+            ExprData::LiteralFloat(_) => 0,
+            ExprData::LiteralBool(_) => 0,
+            ExprData::InfixOp(lhs, _, rhs) => {
+                lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns)
+            }
+            ExprData::Var(_) => 0,
+            ExprData::Declaration { name: _, value } => value.modify_some_sidecars(fns),
+            ExprData::Block(b) => {
+                (b.exprs)
+                    .iter_mut()
+                    .map(|e| e.modify_some_sidecars(fns))
+                    .sum::<usize>()
+                    + (b.last)
+                        .as_mut()
+                        .map(|e| e.modify_some_sidecars(fns))
+                        .unwrap_or_default()
+            }
+        })
+    }
 }
 
 impl<'a> From<ExprData<'a, NoSidecars>> for Expr<'a, NoSidecars> {
@@ -94,10 +139,6 @@ pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
         value: Box<Expr<'a, S>>,
     },
     Block(Spanned<Block<'a, S>>),
-}
-
-impl<'a, S: Sidecars> ExprData<'a, S> {
-    pub(crate) fn map_sidecar() {}
 }
 
 #[derive(Debug, Clone, PartialEq)]
