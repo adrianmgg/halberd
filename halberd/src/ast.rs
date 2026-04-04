@@ -10,12 +10,18 @@ pub(crate) trait Sidecars {
     type Expr: std::fmt::Debug + Clone + PartialEq;
 }
 
+pub(crate) struct SidecarFns<ExprFn> {
+    pub expr: ExprFn,
+}
+
 pub(crate) trait Sidecarred<'a, S: Sidecars> {
     type WithOtherSidecar<S2: Sidecars>;
-    fn map_sidecars<New: Sidecars, MapExpr: Fn(&ExprData<'a, S>, S::Expr) -> New::Expr>(
+    fn map_sidecars<S2: Sidecars, MapExpr: Fn(&ExprData<'a, S>, S::Expr) -> S2::Expr>(
         self,
-        expr_mapper: MapExpr,
-    ) -> Self::WithOtherSidecar<New>;
+        fns: &SidecarFns<MapExpr>,
+    ) -> Self::WithOtherSidecar<S2>;
+    // FIXME name
+    // fn iteratively_adjust_sidecars<>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,27 +39,27 @@ pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {
 impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     type WithOtherSidecar<S2: Sidecars> = Expr<'a, S2>;
     fn map_sidecars<
-        New: Sidecars,
-        MapExpr: Fn(&ExprData<'a, S>, <S as Sidecars>::Expr) -> New::Expr,
+        S2: Sidecars,
+        MapExpr: Fn(&ExprData<'a, S>, <S as Sidecars>::Expr) -> S2::Expr,
     >(
         self,
-        expr_mapper: MapExpr,
-    ) -> Expr<'a, New> {
+        fns: &SidecarFns<MapExpr>,
+    ) -> Expr<'a, S2> {
         Expr {
-            sidecar: expr_mapper(&self.data, self.sidecar),
+            sidecar: (fns.expr)(&self.data, self.sidecar),
             data: match self.data {
                 ExprData::LiteralInt(i) => ExprData::LiteralInt(i),
                 ExprData::LiteralFloat(f) => ExprData::LiteralFloat(f),
                 ExprData::LiteralBool(b) => ExprData::LiteralBool(b),
                 ExprData::InfixOp(lhs, op, rhs) => ExprData::InfixOp(
-                    Box::new(lhs.map_sidecars(&expr_mapper)),
+                    Box::new(lhs.map_sidecars(fns)),
                     op,
-                    Box::new(rhs.map_sidecars(&expr_mapper)),
+                    Box::new(rhs.map_sidecars(fns)),
                 ),
                 ExprData::Var(v) => ExprData::Var(v),
                 ExprData::Declaration { name, value } => ExprData::Declaration {
                     name,
-                    value: Box::new(value.map_sidecars(&expr_mapper)),
+                    value: Box::new(value.map_sidecars(fns)),
                 },
                 ExprData::Block(Spanned {
                     inner: Block { exprs, last },
@@ -61,11 +67,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 }) => ExprData::Block(Spanned {
                     span,
                     inner: Block {
-                        exprs: exprs
-                            .into_iter()
-                            .map(|e| e.map_sidecars(&expr_mapper))
-                            .collect(),
-                        last: last.map(|e| Box::new(e.map_sidecars(&expr_mapper))),
+                        exprs: exprs.into_iter().map(|e| e.map_sidecars(fns)).collect(),
+                        last: last.map(|e| Box::new(e.map_sidecars(fns))),
                     },
                 }),
             },
