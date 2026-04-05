@@ -31,21 +31,44 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) -> ast::Expr<'a, PartiallyTyped> {
         },
     });
 
-    // e.iteratively_modify_sidecars(&SidecarFns {
-    //     expr: |data: &ast::ExprData<'a, PartiallyTyped>, sidecar: &mut PartiallyTypedExprData| {
-    //         match sidecar.r#type {
-    //             Some(_) => false,
-    //             None => match data {
-    //                 ast::ExprData::LiteralInt(spanned) => todo!(),
-    //                 ast::ExprData::LiteralFloat(spanned) => todo!(),
-    //                 ast::ExprData::LiteralBool(spanned) => todo!(),
-    //                 ast::ExprData::InfixOp(expr, spanned, expr1) => todo!(),
-    //                 ast::ExprData::Var(spanned) => todo!(),
-    //                 ast::ExprData::Declaration { name, value } => todo!(),
-    //                 ast::ExprData::Block(spanned) => todo!(),
-    //             },
-    //         }
-    //     },
-    // });
+    e.iteratively_modify_sidecars(&SidecarFns {
+        expr: |data: &ast::ExprData<'a, PartiallyTyped>, sidecar: &mut PartiallyTypedExprData| {
+            match sidecar.r#type {
+                Some(_) => false,
+                // FIXME rewrite this to handle the return bool automatically
+                None => match data {
+                    ast::ExprData::LiteralInt(_) => false,
+                    ast::ExprData::LiteralFloat(_) => false,
+                    ast::ExprData::LiteralBool(_) => false,
+                    ast::ExprData::InfixOp(lhs, op, rhs) => todo!(),
+                    ast::ExprData::Var(_) => false,
+                    // FIXME wait. is our ast wrong here WHOOPS
+                    ast::ExprData::Declaration { name: _, value } => match value.sidecar.r#type {
+                        Some(r#type) => {
+                            sidecar.r#type = Some(r#type);
+                            true
+                        }
+                        None => false,
+                    },
+                    ast::ExprData::Block(spanned) => match &spanned.inner.last {
+                        // blocks with no terminal expression get the type void
+                        None => {
+                            sidecar.r#type = Some(types::Type::Void);
+                            true
+                        }
+                        // blocks with a terminal expression get that expression's type if it has one
+                        Some(terminal) => match terminal.sidecar.r#type {
+                            Some(r#type) => {
+                                sidecar.r#type = Some(r#type);
+                                true
+                            }
+                            None => false,
+                        },
+                    },
+                },
+            }
+        },
+    });
+
     e
 }
