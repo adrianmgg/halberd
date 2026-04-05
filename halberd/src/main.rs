@@ -18,7 +18,10 @@ fn main() {
         let tokens = dbg!(lexer::lexer().parse(&line).into_result());
         if let Ok(tokens) = tokens {
             let input = tokens[..].split_spanned((0..line.len()).into());
-            let _ = dbg!(parser::function().parse(input).into_result());
+            if let Ok(expr) = dbg!(parser::expr_parser().parse(input).into_result()) {
+                let expr_typed = compiler::foo(expr);
+                dbg!(expr_typed);
+            }
         }
     }
 }

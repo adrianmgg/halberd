@@ -3,20 +3,20 @@ use crate::{
     types,
 };
 
-struct PartiallyTyped;
+pub(crate) struct PartiallyTyped;
 #[derive(Debug, PartialEq, Clone)]
-struct PartiallyTypedExprData {
-    r#type: Option<types::Type>,
+pub(crate) struct PartiallyTypedExprData {
+    pub(crate) r#type: Option<types::Type>,
 }
 impl Sidecars for PartiallyTyped {
     type Expr = PartiallyTypedExprData;
 }
 
-fn foo<'a>(e: ast::Expr<'a, NoSidecars>) -> ast::Expr<'a, PartiallyTyped> {
+pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) -> ast::Expr<'a, PartiallyTyped> {
     // we can trivially add a type already for anything whose type is definitive from just the
     // parsed ast, everything else we will need to do more work to figure out the type later
 
-    e.map_sidecars(&SidecarFns {
+    let mut e: ast::Expr<'a, PartiallyTyped> = e.map_sidecars(&SidecarFns {
         expr: |data: &ast::ExprData<'a>, _| {
             let r#type = match data {
                 ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
@@ -29,5 +29,23 @@ fn foo<'a>(e: ast::Expr<'a, NoSidecars>) -> ast::Expr<'a, PartiallyTyped> {
             };
             PartiallyTypedExprData { r#type }
         },
-    })
+    });
+
+    // e.iteratively_modify_sidecars(&SidecarFns {
+    //     expr: |data: &ast::ExprData<'a, PartiallyTyped>, sidecar: &mut PartiallyTypedExprData| {
+    //         match sidecar.r#type {
+    //             Some(_) => false,
+    //             None => match data {
+    //                 ast::ExprData::LiteralInt(spanned) => todo!(),
+    //                 ast::ExprData::LiteralFloat(spanned) => todo!(),
+    //                 ast::ExprData::LiteralBool(spanned) => todo!(),
+    //                 ast::ExprData::InfixOp(expr, spanned, expr1) => todo!(),
+    //                 ast::ExprData::Var(spanned) => todo!(),
+    //                 ast::ExprData::Declaration { name, value } => todo!(),
+    //                 ast::ExprData::Block(spanned) => todo!(),
+    //             },
+    //         }
+    //     },
+    // });
+    e
 }
