@@ -4,6 +4,7 @@ use crate::util::{impl_conversion_2_hop, impl_conversion_enum_variant};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Type {
+    Void,
     Bool,
     Number(NumberKind),
     Vector(Vector),

@@ -160,6 +160,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
         ))
         .boxed();
 
+        // FIXME
         let block = expr
             .clone()
             .separated_by(just(Symbol::Semicolon))
