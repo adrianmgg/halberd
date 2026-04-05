@@ -1,8 +1,10 @@
 use std::borrow::Cow;
 
 use chumsky::span::Spanned;
+use derive_where::derive_where;
 use num_bigint::BigInt;
 use num_rational::BigRational;
+use std::fmt::Debug;
 
 use crate::types;
 
@@ -43,7 +45,8 @@ impl Sidecars for NoSidecars {
     type Expr = ();
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[derive_where(Debug; S::Expr)]
 pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {
     pub data: ExprData<'a, S>,
     pub sidecar: S::Expr,
@@ -127,7 +130,8 @@ impl<'a> From<ExprData<'a, NoSidecars>> for Expr<'a, NoSidecars> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[derive_where(Debug; S::Expr)]
 pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
     LiteralInt(Spanned<LiteralInt>),
     LiteralFloat(Spanned<LiteralFloat>),
@@ -153,7 +157,8 @@ pub(crate) struct LiteralFloat {
     pub value: BigRational,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[derive_where(Debug; S::Expr)]
 pub(crate) struct Block<'a, S: Sidecars = NoSidecars> {
     pub(crate) exprs: Vec<Expr<'a, S>>,
     pub(crate) last: Option<Box<Expr<'a, S>>>,
@@ -170,7 +175,8 @@ pub(crate) enum InfixOp {
     MatrixMultiply,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[derive_where(Debug; S::Expr)]
 pub(crate) struct Function<'a, S: Sidecars = NoSidecars> {
     pub(crate) name: Spanned<Cow<'a, str>>,
     pub(crate) return_type: Spanned<types::Type>,
