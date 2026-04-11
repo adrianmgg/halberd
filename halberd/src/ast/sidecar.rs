@@ -5,24 +5,37 @@ pub(crate) trait Sidecars {
     type Expr: std::fmt::Debug + Clone + PartialEq;
 }
 
+// FIXME rename this, we use it for more than just fns now
+#[derive(Clone, Copy)]
 pub(crate) struct SidecarFns<ExprFn> {
     pub expr: ExprFn,
 }
 
-pub(crate) trait Sidecarred<'a, S: Sidecars> {
+// NOTE Default impl means our Default will set
+//      `parent` to `Ctx::default()` and
+//      `prior_sibling` to `None`, which is the behavior we want
+#[derive(Debug, Default)]
+pub(crate) struct SidecarWalkContexts<Ctx> {
+    pub(crate) parent: Ctx,
+    pub(crate) prior_sibling: Option<Ctx>,
+}
+
+pub(crate) trait Sidecarred<'a, S: Sidecars + 'a> {
     type WithOtherSidecar<S2: Sidecars>;
-    fn map_sidecars<S2: Sidecars, MapExpr: Fn(&ExprData<'a, S>, S::Expr) -> S2::Expr>(
+    fn map_sidecars<S2: Sidecars, MapExpr: FnMut(&'a ExprData<'a, S>, S::Expr) -> S2::Expr>(
         self,
-        fns: &SidecarFns<MapExpr>,
+        fns: &mut SidecarFns<MapExpr>,
     ) -> Self::WithOtherSidecar<S2>;
+
     // FIXME name
-    fn modify_some_sidecars<AdjustExpr: Fn(&ExprData<'a, S>, &mut S::Expr) -> bool>(
+    fn modify_some_sidecars<AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool>(
         &mut self,
-        fns: &SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<AdjustExpr>,
     ) -> usize;
-    fn iteratively_modify_sidecars<AdjustExpr: Fn(&ExprData<'a, S>, &mut S::Expr) -> bool>(
+
+    fn iteratively_modify_sidecars<AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool>(
         &mut self,
-        fns: &SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<AdjustExpr>,
     ) {
         loop {
             if self.modify_some_sidecars(fns) == 0 {
@@ -30,22 +43,44 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
             }
         }
     }
+
+    // NOTE trying out 'everything has the same ctx type' for now, since that solves the problem of
+    //      how we api-wise e.g. specifically return an expr-ctx from an expr and so on,
+    //      but if it causes other problems then maybe worth going back to the drawing board on
+    //      that
+    fn modify_some_sidecars_2<
+        Ctx: Clone + Default,
+        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+    >(
+        &mut self,
+        fns: &mut SidecarFns<AdjustExpr>,
+        ctxs: Option<SidecarWalkContexts<Ctx>>,
+    ) -> (usize, Ctx);
+
+    fn iteratively_modify_sidecars_2<
+        Ctx: Clone + Default,
+        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+    >(
+        &mut self,
+        fns: &mut SidecarFns<AdjustExpr>,
+    ) {
+        loop {
+            let (n, _) = self.modify_some_sidecars_2(fns, None);
+            if n == 0 {
+                break;
+            }
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NoSidecars;
-impl Sidecars for NoSidecars {
-    type Expr = ();
-}
-
-impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
+impl<'a, S: Sidecars + 'a> Sidecarred<'a, S> for Expr<'a, S> {
     type WithOtherSidecar<S2: Sidecars> = Expr<'a, S2>;
     fn map_sidecars<
         S2: Sidecars,
-        MapExpr: Fn(&ExprData<'a, S>, <S as Sidecars>::Expr) -> S2::Expr,
+        MapExpr: FnMut(&'a ExprData<'a, S>, <S as Sidecars>::Expr) -> S2::Expr,
     >(
         self,
-        fns: &SidecarFns<MapExpr>,
+        fns: &mut SidecarFns<MapExpr>,
     ) -> Expr<'a, S2> {
         Expr {
             sidecar: (fns.expr)(&self.data, self.sidecar),
@@ -78,10 +113,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     }
 
     fn modify_some_sidecars<
-        AdjustExpr: Fn(&ExprData<'a, S>, &mut <S as Sidecars>::Expr) -> bool,
+        AdjustExpr: FnMut(&ExprData<'a, S>, &mut <S as Sidecars>::Expr) -> bool,
     >(
         &mut self,
-        fns: &SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<AdjustExpr>,
     ) -> usize {
         (if (fns.expr)(&self.data, &mut self.sidecar) {
             1
@@ -107,5 +142,66 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                         .unwrap_or_default()
             }
         })
+    }
+
+    fn modify_some_sidecars_2<
+        Ctx: Clone + Default,
+        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+    >(
+        &mut self,
+        fns: &mut SidecarFns<AdjustExpr>,
+        ctxs: Option<SidecarWalkContexts<Ctx>>,
+    ) -> (usize, Ctx) {
+        let (changed, ctx_here) =
+            (fns.expr)(&self.data, &mut self.sidecar, ctxs.unwrap_or_default());
+
+        let mut n_changes = if changed { 1 } else { 0 };
+        let mut ctx_final = ctx_here.clone();
+        // ctx of most recently processed subexpression
+        let mut ctx_subexpr = None;
+
+        // https://youtu.be/NPwyyjtxlzU
+        // TODO maybe refactor this to not use a macro lol
+        macro_rules! foo {
+            ($child_node:expr) => {
+                #[allow(unused_assignments)]
+                {
+                    let (n, c) = $child_node.modify_some_sidecars_2(
+                        fns,
+                        Some(SidecarWalkContexts {
+                            parent: ctx_here.clone(),
+                            prior_sibling: ctx_subexpr.clone(),
+                        }),
+                    );
+                    n_changes += n;
+                    ctx_final = c.clone();
+                    ctx_subexpr = Some(c);
+                }
+            };
+        }
+
+        match &mut self.data {
+            ExprData::LiteralInt(_)
+            | ExprData::LiteralFloat(_)
+            | ExprData::LiteralBool(_)
+            | ExprData::Var(_) => {}
+            ExprData::InfixOp(lhs, _, rhs) => {
+                foo!(lhs);
+                foo!(rhs);
+            }
+            ExprData::Declaration { name: _, value } => {
+                foo!(value);
+            }
+            ExprData::Block(b) => {
+                for expr in b.exprs.iter_mut() {
+                    foo!(expr);
+                }
+                if let Some(expr) = b.last.as_mut() {
+                    foo!(expr);
+                }
+            }
+        };
+
+        (n_changes, ctx_final)
     }
 }
