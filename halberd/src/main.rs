@@ -1,4 +1,5 @@
 #![feature(trait_alias)]
+// #![feature(min_specialization)]
 
 pub(crate) mod ast;
 pub(crate) mod compiler;

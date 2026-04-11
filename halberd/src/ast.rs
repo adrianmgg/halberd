@@ -10,6 +10,7 @@ use std::fmt::Debug;
 
 use crate::types;
 
+use crate::compiler::NoSidecars;
 pub(crate) use sidecar::*;
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr)]
@@ -20,7 +21,10 @@ pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {
 
 impl<'a> From<ExprData<'a, NoSidecars>> for Expr<'a, NoSidecars> {
     fn from(data: ExprData<'a, NoSidecars>) -> Self {
-        Expr { data, sidecar: () }
+        Expr {
+            data,
+            sidecar: Default::default(),
+        }
     }
 }
 
