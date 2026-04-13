@@ -24,3 +24,16 @@ macro_rules! impl_conversion_2_hop {
 }
 
 pub(crate) use impl_conversion_2_hop;
+
+macro_rules! impl_conversion_copy_deref {
+    ($ty:ty) => {
+        impl From<&$ty> for $ty {
+            #[inline(always)]
+            fn from(x: &$ty) -> $ty {
+                *x
+            }
+        }
+    };
+}
+
+pub(crate) use impl_conversion_copy_deref;

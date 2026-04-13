@@ -1,4 +1,4 @@
-use crate::util::{impl_conversion_2_hop, impl_conversion_enum_variant};
+use crate::util::{impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant};
 
 // FIXME can't currently represent boolean vectors
 
@@ -25,6 +25,10 @@ impl_conversion_enum_variant!(NumberKind::Float);
 impl_conversion_enum_variant!(NumberKind::Integer);
 impl_conversion_2_hop!(Integer => NumberKind => Type);
 impl_conversion_2_hop!(Float => NumberKind => Type);
+impl_conversion_copy_deref!(Integer);
+impl_conversion_copy_deref!(Float);
+impl_conversion_2_hop!(&Integer => Integer => Type);
+impl_conversion_2_hop!(&Float => Float => Type);
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Integer {
