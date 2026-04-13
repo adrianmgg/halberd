@@ -1,4 +1,6 @@
 #![feature(trait_alias)]
+#![feature(try_blocks)]
+#![feature(concat_idents)]
 // #![feature(min_specialization)]
 
 pub(crate) mod ast;
