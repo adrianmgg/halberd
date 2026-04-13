@@ -1,4 +1,6 @@
-use crate::util::{impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant};
+use crate::util::{
+    impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant,
+};
 
 // FIXME can't currently represent boolean vectors
 
@@ -51,4 +53,55 @@ pub struct Vector {
 pub struct Matrix {
     pub column_type: Vector,
     pub column_count: u32,
+}
+
+macro_rules! mk_option_helper_exts {
+    (
+        $(
+            $extname:ident ($ext_target:ty) {
+                $( $method:ident $(( $($arg:ident : $argty:ty),* ))? -> $result:ty = $self:tt => { $($body:tt)* } )*
+            };
+        )*
+    ) => {
+        $(
+            pub trait $extname: Sized {
+                $( fn $method(self $( $( , $arg: $argty )* )?) -> Option<$result> ; )*
+            }
+            impl $extname for Option<$ext_target> {
+                $( fn $method($self $( $( , $arg: $argty )* )?) -> Option<$result> {
+                    $($body)*
+                } )*
+            }
+        )*
+    };
+}
+
+pub mod prelude {
+    use super::*;
+
+    mk_option_helper_exts! {
+        ExtTwoTypes((Type, Type)) {
+            and_is_homogeneous -> Type = self => {self.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))}
+        };
+        ExtAnyType(Type) {
+            and_is_vector -> Vector = self => { self.and_then(|t| match t {
+                Type::Vector(v) => Some(v),
+                _ => None,
+            }) }
+            and_is_matrix -> Matrix = self => { self.and_then(|t| match t {
+                Type::Matrix(m) => Some(m),
+                _ => None,
+            }) }
+        };
+        ExtVector(Vector) {
+            to_component_type -> NumberKind = self => { self.map(|v| v.component_type) }
+            and_has_n_components(n: u32) -> Vector = self => { self.and_then(|v| (v.component_count == n).then_some(v)) }
+        };
+        ExtMatrix(Matrix) {
+        };
+        ExtNumberKind(NumberKind) {
+            and_is_float -> Float = self => { self.and_then(|n| match n { NumberKind::Float(f) => Some(f), _ => None, }) }
+            and_is_int -> Integer = self => { self.and_then(|n| match n { NumberKind::Integer(i) => Some(i), _ => None, }) }
+        };
+    }
 }

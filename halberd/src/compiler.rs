@@ -1,7 +1,7 @@
 use crate::{
     ast::{self, SidecarFns, Sidecarred, Sidecars},
     scope::{self, ScopeId},
-    types,
+    types::{self, prelude::*},
 };
 
 mod sidecars {
@@ -101,7 +101,7 @@ mod sidecars {
     impl<T> TryFrom<ExprSidecar<Option<ScopeId>, T>> for ExprSidecar<ScopeId, T> {
         type Error = ();
         fn try_from(value: ExprSidecar<Option<ScopeId>, T>) -> Result<Self, Self::Error> {
-            if value.scope().is_none() {
+            if value.scope_maybe().is_none() {
                 Err(())
             } else {
                 let inner = value.0;
@@ -118,7 +118,7 @@ mod sidecars {
     impl<S> TryFrom<ExprSidecar<S, Option<Type>>> for ExprSidecar<S, Type> {
         type Error = ();
         fn try_from(value: ExprSidecar<S, Option<Type>>) -> Result<Self, Self::Error> {
-            if value.r#type().is_none() {
+            if value.type_maybe().is_none() {
                 Err(())
             } else {
                 let inner = value.0;
@@ -174,15 +174,33 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                         ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
                         ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),
                         ast::ExprData::LiteralBool(_) => Some(types::Type::Bool),
-                        ast::ExprData::InfixOp(lhs, op, rhs) => match op.inner {
-                            ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply => {
-                                todo!()
+                        ast::ExprData::InfixOp(lhs, op, rhs) => {
+                            let lhs_and_rhs =
+                                try { (lhs.sidecar.type_maybe()?, rhs.sidecar.type_maybe()?) };
+                            match op.inner {
+                                ast::InfixOp::Add
+                                | ast::InfixOp::Subtract
+                                | ast::InfixOp::Multiply => {
+                                    lhs_and_rhs.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))
+                                }
+                                ast::InfixOp::Divide => todo!(),
+                                // OpDot
+                                ast::InfixOp::DotProduct => lhs_and_rhs
+                                    .and_is_homogeneous()
+                                    .and_is_vector()
+                                    .to_component_type()
+                                    .and_is_float()
+                                    .map(Into::into),
+                                // glsl ext cross()
+                                ast::InfixOp::CrossProduct => lhs_and_rhs
+                                    .and_is_homogeneous()
+                                    .and_is_vector()
+                                    .and_has_n_components(3)
+                                    .map(Into::into),
+                                // OpMatrixTimesMatrix
+                                ast::InfixOp::MatrixMultiply => todo!(),
                             }
-                            ast::InfixOp::Divide => todo!(),
-                            ast::InfixOp::DotProduct => todo!(),
-                            ast::InfixOp::CrossProduct => todo!(),
-                            ast::InfixOp::MatrixMultiply => todo!(),
-                        },
+                        }
                         ast::ExprData::Var(_) => None,
                         // FIXME wait. is our ast wrong here WHOOPS
                         ast::ExprData::Declaration { name: _, value } => value.sidecar.type_maybe(),
