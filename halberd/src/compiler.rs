@@ -205,3 +205,79 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
         },
     });
 }
+
+#[rustfmt::skip]
+macro_rules! typing_rule_impl {
+    (@case LiteralInt($t:ident)) => {
+        ast::ExprData::LiteralInt(chumsky::span::Spanned {
+            inner: ast::LiteralInt { r#type: $t, .. },
+            ..
+        })
+    };
+    (@case LiteralFloat($t:ident)) => {
+        ast::ExprData::LiteralFloat(chumsky::span::Spanned {
+            inner: ast::LiteralFloat { r#type: $t, .. },
+            ..
+        })
+    };
+    (@case LiteralBool) => {
+        ast::ExprData::LiteralBool(_)
+    };
+    (@to Bool) => {Some(types::Type::Bool)};
+    (@to $t:ident) => {
+        Some($t.into())
+    };
+}
+
+#[rustfmt::skip]
+macro_rules! typing_rule_latex {
+    (@case LiteralInt($t:ident)) => { concat!{r"i:", stringify!{$t}} };
+    (@case LiteralFloat($t:ident)) => { concat!{r"f:", stringify!{$t}} };
+    (@case LiteralBool) => { "b" };
+    (@to Bool) => { "Bool" };
+    (@to $t:ident) => { stringify!{$t} };
+}
+
+macro_rules! typing_rules {
+    (
+        $(
+            ( $($r1:tt)* )
+            =>
+            ( $($r2:tt)* )
+            $(
+                if
+                ( $($r3:tt)* )
+            )?
+            ;
+        )*
+    ) => {
+        fn typing_thing_aaa<'a>(data: &ast::ExprData<'a, Phase2>) -> Option<types::Type> {
+            let r#type: Option<types::Type> = match data {
+                $(
+                    typing_rule_impl!{@case $($r1)*}
+                    =>
+                    typing_rule_impl!{@to $($r2)*}
+                    ,
+                )*
+                _ => None,
+            };
+            r#type
+        }
+
+        const TYPING_RULES_LATEX: &str = concat!{
+            $(
+                r"\typingRule"
+                , "{", typing_rule_latex!{@case $($r1)*}, "}"
+                , "{", typing_rule_latex!{@to $($r2)*}, "}"
+                , "{", $( typing_rule_latex!{@cond $($r3)*} , )? "}"
+                , "\n"
+            ),*
+        };
+    };
+}
+
+typing_rules! {
+    (LiteralInt(t)) => (t);
+    (LiteralFloat(t)) => (t);
+    (LiteralBool) => (Bool);
+}
