@@ -140,9 +140,13 @@ mod sidecars {
 
 pub(crate) use sidecars::{ExprSidecar, NoSidecars};
 
+/// nothing
 type Phase0 = NoSidecars;
+/// just scope
 type Phase1 = sidecars::TheSidecars<ExprSidecar<ScopeId, ()>>;
+/// scope, and some types
 type Phase2 = sidecars::TheSidecars<ExprSidecar<ScopeId, Option<types::Type>>>;
+/// scope and fully typed
 type Phase3 = sidecars::TheSidecars<ExprSidecar<ScopeId, types::Type>>;
 
 pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
@@ -166,84 +170,85 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
 
     // now start actually populating the types
     e.iteratively_modify_sidecars(&mut SidecarFns {
-        expr: |data: &ast::ExprData<'a, Phase2>, sidecar: &mut ExprSidecar<_, _>| {
-            match sidecar.type_maybe() {
-                Some(_) => false,
-                // FIXME rewrite this to handle the return bool automatically
-                None => {
-                    let r#type = match data {
-                        ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
-                        ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),
-                        ast::ExprData::LiteralBool(_) => Some(types::Type::Bool),
-                        ast::ExprData::InfixOp(lhs, op, rhs) => {
-                            let lhs_type = lhs.sidecar.type_maybe();
-                            let rhs_type = rhs.sidecar.type_maybe();
-                            let lhs_and_rhs = try { (lhs_type?, rhs_type?) };
-                            match op.inner {
-                                ast::InfixOp::Add
-                                | ast::InfixOp::Subtract
-                                | ast::InfixOp::Multiply => {
-                                    lhs_and_rhs.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))
-                                }
-                                ast::InfixOp::Divide => todo!(),
-                                // OpDot
-                                ast::InfixOp::DotProduct => lhs_and_rhs
-                                    .and_is_homogeneous()
-                                    .and_is_vector()
-                                    .and_to_component_type()
-                                    .and_is_float()
-                                    .map(Into::into),
-                                // glsl ext cross()
-                                ast::InfixOp::CrossProduct => lhs_and_rhs
-                                    .and_is_homogeneous()
-                                    .and_is_vector()
-                                    .and_has_n_components(3)
-                                    .map(Into::into),
-                                // OpMatrixTimesMatrix
-                                ast::InfixOp::MatrixMultiply => {
-                                    try {
-                                        let lhs = lhs_type.and_is_matrix()?;
-                                        let rhs = rhs_type.and_is_matrix()?;
-                                        // "LeftMatrix must be a matrix whose Column Type is the same as the Column Type in Result Type."
-                                        // -> Result Type will be a matrix whose Column Type will be the Column Type from LeftMatrix
-                                        let column_type = lhs.column_type;
-                                        // "Result Type must be an OpTypeMatrix whose Column Type is a vector of floating-point type."
-                                        let component_type = column_type.component_type;
-                                        component_type.and_is_float()?;
-                                        // "RightMatrix must be a matrix with the same Component Type as the Component Type in Result Type."
-                                        (component_type == rhs.component_type()).then_some(())?;
-                                        // "[RightMatrix's] number of columns must equal the number of columns in Result Type."
-                                        let column_count = rhs.column_count();
-                                        // "[RightMatrix's] columns must have the same number of components as the number of columns in LeftMatrix."
-                                        (rhs.row_count() == lhs.column_count()).then_some(())?;
-                                        types::Matrix {
-                                            column_type,
-                                            column_count,
-                                        }
-                                        .into()
-                                    }
-                                }
-                            }
-                        }
-                        ast::ExprData::Var(_) => None,
-                        // FIXME wait. is our ast wrong here WHOOPS
-                        ast::ExprData::Declaration { name: _, value } => value.sidecar.type_maybe(),
-                        ast::ExprData::Block(spanned) => match &spanned.inner.last {
-                            // blocks with no terminal expression get the type void
-                            None => Some(types::Type::Void),
-                            // blocks with a terminal expression get that expression's type if it has one
-                            Some(terminal) => terminal.sidecar.type_maybe(),
-                        },
-                    };
-                    match r#type {
-                        None => false,
-                        Some(r#type) => {
-                            *sidecar.type_maybe_mut() = Some(r#type);
-                            true
-                        }
+        expr: |data: &ast::ExprData<'a, Phase2>, sidecar: &mut ExprSidecar<_, _>| match sidecar
+            .type_maybe_mut()
+        {
+            Some(_) => false,
+            sidecar_type @ None => {
+                let r#type = infer_expr_type(data);
+                match r#type {
+                    None => false,
+                    Some(r#type) => {
+                        *sidecar_type = Some(r#type);
+                        true
                     }
                 }
             }
         },
     });
+}
+
+fn infer_expr_type<'a>(data: &ast::ExprData<'a, Phase2>) -> Option<types::Type> {
+    match data {
+        ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
+        ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),
+        ast::ExprData::LiteralBool(_) => Some(types::Type::Bool),
+        ast::ExprData::InfixOp(lhs, op, rhs) => {
+            let lhs_type = lhs.sidecar.type_maybe();
+            let rhs_type = rhs.sidecar.type_maybe();
+            let lhs_and_rhs = try { (lhs_type?, rhs_type?) };
+            match op.inner {
+                ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply => {
+                    lhs_and_rhs.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))
+                }
+                ast::InfixOp::Divide => todo!(),
+                // OpDot
+                ast::InfixOp::DotProduct => lhs_and_rhs
+                    .and_is_homogeneous()
+                    .and_is_vector()
+                    .and_to_component_type()
+                    .and_is_float()
+                    .map(Into::into),
+                // glsl ext cross()
+                ast::InfixOp::CrossProduct => lhs_and_rhs
+                    .and_is_homogeneous()
+                    .and_is_vector()
+                    .and_has_n_components(3)
+                    .map(Into::into),
+                // OpMatrixTimesMatrix
+                ast::InfixOp::MatrixMultiply => {
+                    try {
+                        let lhs = lhs_type.and_is_matrix()?;
+                        let rhs = rhs_type.and_is_matrix()?;
+                        // "LeftMatrix must be a matrix whose Column Type is the same as the Column Type in Result Type."
+                        // -> Result Type will be a matrix whose Column Type will be the Column Type from LeftMatrix
+                        let column_type = lhs.column_type;
+                        // "Result Type must be an OpTypeMatrix whose Column Type is a vector of floating-point type."
+                        let component_type = column_type.component_type;
+                        component_type.and_is_float()?;
+                        // "RightMatrix must be a matrix with the same Component Type as the Component Type in Result Type."
+                        (component_type == rhs.component_type()).then_some(())?;
+                        // "[RightMatrix's] number of columns must equal the number of columns in Result Type."
+                        let column_count = rhs.column_count();
+                        // "[RightMatrix's] columns must have the same number of components as the number of columns in LeftMatrix."
+                        (rhs.row_count() == lhs.column_count()).then_some(())?;
+                        types::Matrix {
+                            column_type,
+                            column_count,
+                        }
+                        .into()
+                    }
+                }
+            }
+        }
+        ast::ExprData::Var(_) => None,
+        // FIXME wait. is our ast wrong here WHOOPS
+        ast::ExprData::Declaration { name: _, value } => value.sidecar.type_maybe(),
+        ast::ExprData::Block(spanned) => match &spanned.inner.last {
+            // blocks with no terminal expression get the type void
+            None => Some(types::Type::Void),
+            // blocks with a terminal expression get that expression's type if it has one
+            Some(terminal) => terminal.sidecar.type_maybe(),
+        },
+    }
 }
