@@ -1,8 +1,8 @@
 macro_rules! impl_conversion_enum_variant {
-    ($outer:ident :: $inner:ident) => {
+    ($outer:ident:: $inner:ident) => {
         $crate::util::impl_conversion_enum_variant! {$outer :: $inner ( $inner )}
     };
-    ($outer:ident :: $variant:ident ($inner:ident)) => {
+    ($outer:ident:: $variant:ident($inner:ident)) => {
         impl From<$inner> for $outer {
             fn from(x: $inner) -> $outer { $outer::$variant(x) }
         }
