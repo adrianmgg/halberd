@@ -175,8 +175,9 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                         ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),
                         ast::ExprData::LiteralBool(_) => Some(types::Type::Bool),
                         ast::ExprData::InfixOp(lhs, op, rhs) => {
-                            let lhs_and_rhs =
-                                try { (lhs.sidecar.type_maybe()?, rhs.sidecar.type_maybe()?) };
+                            let lhs_type = lhs.sidecar.type_maybe();
+                            let rhs_type = rhs.sidecar.type_maybe();
+                            let lhs_and_rhs = try { (lhs_type?, rhs_type?) };
                             match op.inner {
                                 ast::InfixOp::Add
                                 | ast::InfixOp::Subtract
@@ -198,7 +199,22 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                                     .and_has_n_components(3)
                                     .map(Into::into),
                                 // OpMatrixTimesMatrix
-                                ast::InfixOp::MatrixMultiply => todo!(),
+                                // > RightMatrix must be a matrix with the same Component Type as the Component Type in Result Type. Its number of columns must equal the number of columns in Result Type. Its columns must have the same number of components as the number of columns in LeftMatrix.
+                                ast::InfixOp::MatrixMultiply => {
+                                    try {
+                                        let lhs = lhs_type.and_is_matrix()?;
+                                        let rhs = rhs_type.and_is_matrix()?;
+                                        // "LeftMatrix must be a matrix whose Column Type is the same as the Column Type in Result Type."
+                                        // -> Result Type will be a matrix whose Column Type will be the Column Type from LeftMatrix
+                                        let column_type = lhs.column_type;
+                                        // "Result Type must be an OpTypeMatrix whose Column Type is a vector of floating-point type."
+                                        let component_type = column_type.component_type;
+                                        // lhs_and_rhs.map(|(lhs, rhs)| {
+                                        //     let column_type = lhs
+                                        // })
+                                        todo!()
+                                    }
+                                }
                             }
                         }
                         ast::ExprData::Var(_) => None,

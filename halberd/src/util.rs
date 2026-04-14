@@ -10,7 +10,6 @@ macro_rules! impl_conversion_enum_variant {
         }
     };
 }
-
 pub(crate) use impl_conversion_enum_variant;
 
 macro_rules! impl_conversion_2_hop {
@@ -22,7 +21,6 @@ macro_rules! impl_conversion_2_hop {
         }
     };
 }
-
 pub(crate) use impl_conversion_2_hop;
 
 macro_rules! impl_conversion_copy_deref {
@@ -35,5 +33,24 @@ macro_rules! impl_conversion_copy_deref {
         }
     };
 }
-
 pub(crate) use impl_conversion_copy_deref;
+
+/// ```rust
+/// enum A {
+///     X(u32),
+///     Y(bool),
+/// }
+/// let a = A::X(5);
+/// let b = A::Y(true);
+/// assert_eq!(matches_opt!(a, A::X(n) => n), Some(5));
+/// assert_eq!(matches_opt!(b, A::X(n) => n), None);
+/// ```
+macro_rules! matches_opt {
+    ( $expr:expr, $pat:pat $(if $guard:expr)? => $to:expr) => {
+        match $expr {
+            $pat $(if $guard)? => Some($to),
+            _ => None,
+        }
+    };
+}
+pub(crate) use matches_opt;
