@@ -5,8 +5,9 @@ use crate::{
 };
 
 mod sidecars {
-    use crate::{scope::ScopeId, types::Type};
     use std::marker::PhantomData;
+
+    use crate::{scope::ScopeId, types::Type};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct ExprSidecarInner {
@@ -41,6 +42,7 @@ mod sidecars {
                 PhantomData,
             )
         }
+
         pub fn with_type_none(&self) -> ExprSidecar<S, Option<Type>> {
             ExprSidecar(
                 ExprSidecarInner {
@@ -50,6 +52,7 @@ mod sidecars {
                 PhantomData,
             )
         }
+
         pub fn with_type(&self, r#type: Type) -> ExprSidecar<S, Type> {
             ExprSidecar(
                 ExprSidecarInner {
@@ -63,20 +66,24 @@ mod sidecars {
 
     impl<T> ExprSidecar<Option<ScopeId>, T> {
         pub fn scope_maybe(&self) -> Option<ScopeId> { self.0.scope }
+
         pub fn scope_maybe_mut(&mut self) -> Option<&mut ScopeId> { self.0.scope.as_mut() }
     }
     impl<T> ExprSidecar<ScopeId, T> {
         pub fn scope(&self) -> ScopeId { unsafe { self.0.scope.unwrap_unchecked() } }
+
         pub fn scope_mut(&mut self) -> &mut ScopeId {
             unsafe { self.0.scope.as_mut().unwrap_unchecked() }
         }
     }
     impl<S> ExprSidecar<S, Option<Type>> {
         pub fn type_maybe(&self) -> Option<Type> { self.0.r#type }
+
         pub fn type_maybe_mut(&mut self) -> &mut Option<Type> { &mut self.0.r#type }
     }
     impl<S> ExprSidecar<S, Type> {
         pub fn r#type(&self) -> Type { unsafe { self.0.r#type.unwrap_unchecked() } }
+
         pub fn type_mut(&mut self) -> &mut Type {
             unsafe { self.0.r#type.as_mut().unwrap_unchecked() }
         }
@@ -87,6 +94,7 @@ mod sidecars {
     }
     impl<T> TryFrom<ExprSidecar<Option<ScopeId>, T>> for ExprSidecar<ScopeId, T> {
         type Error = ();
+
         fn try_from(value: ExprSidecar<Option<ScopeId>, T>) -> Result<Self, Self::Error> {
             if value.scope_maybe().is_none() {
                 Err(())
@@ -102,6 +110,7 @@ mod sidecars {
     }
     impl<S> TryFrom<ExprSidecar<S, Option<Type>>> for ExprSidecar<S, Type> {
         type Error = ();
+
         fn try_from(value: ExprSidecar<S, Option<Type>>) -> Result<Self, Self::Error> {
             if value.type_maybe().is_none() {
                 Err(())

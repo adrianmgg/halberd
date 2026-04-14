@@ -1,17 +1,14 @@
 mod sidecar;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Debug};
 
 use chumsky::span::Spanned;
 use derive_where::derive_where;
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use std::fmt::Debug;
-
-use crate::types;
-
-use crate::compiler::NoSidecars;
 pub(crate) use sidecar::*;
+
+use crate::{compiler::NoSidecars, types};
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr)]
 pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {

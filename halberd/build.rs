@@ -68,21 +68,29 @@ fn main() -> eyre::Result<()> {
 struct Modules(codegen::Scope);
 impl Modules {
     fn root(&mut self) -> &mut codegen::Scope { &mut self.0 }
+
     fn iil(&mut self) -> &mut codegen::Module { self.root().get_or_new_module("iil") }
+
     fn iil_flat(&mut self) -> &mut codegen::Module { self.iil().get_or_new_module("flat") }
+
     fn iil_f_instructions(&mut self) -> &mut codegen::Module {
         self.iil_flat().get_or_new_module("instruction")
     }
+
     fn iil_hierarchical(&mut self) -> &mut codegen::Module {
         self.iil().get_or_new_module("hierarchical")
     }
+
     fn iil_h_instructions(&mut self) -> &mut codegen::Module {
         self.iil_hierarchical().get_or_new_module("instruction")
     }
+
     fn spv(&mut self) -> &mut codegen::Module { self.root().get_or_new_module("spv") }
+
     fn spv_operandkind(&mut self) -> &mut codegen::Module {
         self.spv().get_or_new_module("operand_kind")
     }
+
     fn spv_instruction(&mut self) -> &mut codegen::Module {
         self.spv().get_or_new_module("instruction")
     }

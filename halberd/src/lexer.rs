@@ -71,7 +71,6 @@ impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Keyword {
     type Item<'a>
         = Token<'src>
     where Self: 'a;
-
     type Iter<'a>
         = std::iter::Once<Token<'src>>
     where Self: 'a;
@@ -95,7 +94,6 @@ impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Symbol {
     type Item<'a>
         = Token<'src>
     where Self: 'a;
-
     type Iter<'a>
         = std::iter::Once<Token<'src>>
     where Self: 'a;
@@ -232,10 +230,10 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
 #[cfg(test)]
 mod test_lex {
-    use crate::{lexer::Keyword, types};
+    use chumsky::{Parser as _, span::Spanned};
 
     use super::{Token, lexer};
-    use chumsky::{Parser as _, span::Spanned};
+    use crate::{lexer::Keyword, types};
 
     macro_rules! lex_test {
         ($name:ident, $s:literal, $m:pat $(if $guard:expr)?) => {
