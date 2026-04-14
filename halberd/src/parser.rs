@@ -73,9 +73,8 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
         .boxed()
 }
 
-pub fn file<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ()> {
-    // FIXME implement fully
-    function().repeated()
+pub fn file<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::File<'src>> {
+    function().repeated().collect()
 }
 
 pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<'src>> {

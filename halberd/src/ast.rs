@@ -1,6 +1,6 @@
 mod sidecar;
 
-use std::{borrow::Cow, fmt::Debug};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 
 use chumsky::span::Spanned;
 use derive_where::derive_where;
@@ -73,4 +73,17 @@ pub(crate) struct Function<'a, S: Sidecars = NoSidecars> {
 pub(crate) struct FunctionArg<'a> {
     pub(crate) name: Spanned<Cow<'a, str>>,
     pub(crate) r#type: Spanned<types::Type>,
+}
+
+#[derive_where(Debug; S::Expr)]
+#[derive_where(Default;)]
+pub(crate) struct File<'a, S: Sidecars = NoSidecars> {
+    pub(crate) functions: HashMap<Cow<'a, str>, Vec<Function<'a, S>>>,
+}
+
+impl<'a, S: Sidecars> chumsky::container::Container<Function<'a, S>> for File<'a, S> {
+    fn push(&mut self, item: Function<'a, S>) {
+        let a = item.name.inner.clone();
+        self.functions.entry(a).or_default().push(item);
+    }
 }

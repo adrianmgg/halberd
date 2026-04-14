@@ -5,7 +5,10 @@ use crate::{
 };
 
 mod sidecars {
-    use std::marker::PhantomData;
+    use std::{
+        fmt::{self, Debug},
+        marker::PhantomData,
+    };
 
     use crate::{scope::ScopeId, types::Type};
 
@@ -15,9 +18,38 @@ mod sidecars {
         r#type: Option<Type>,
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Clone, Copy, PartialEq, Eq)]
     #[repr(transparent)]
     pub struct ExprSidecar<S, T>(ExprSidecarInner, PhantomData<(S, T)>);
+
+    macro_rules! mk_exprsidecar_debug {
+        ($s:ty, $t:ty, $self:ident $(,($field:literal, $val:expr))*) => {
+            impl Debug for ExprSidecar<$s, $t> {
+                fn fmt(&$self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    f.debug_struct("ExprSidecar")
+                        $(.field($field, $val))*
+                        .finish()
+                }
+            }
+        };
+    }
+    mk_exprsidecar_debug!((), (), self);
+    mk_exprsidecar_debug!(Option<ScopeId>, (), self, ("scope", &self.scope_maybe()));
+    mk_exprsidecar_debug!(ScopeId, (), self, ("scope", &self.scope()));
+    mk_exprsidecar_debug!(
+        ScopeId,
+        Option<Type>,
+        self,
+        ("scope", &self.scope()),
+        ("type", &self.type_maybe())
+    );
+    mk_exprsidecar_debug!(
+        ScopeId,
+        Type,
+        self,
+        ("scope", &self.scope()),
+        ("type", &self.r#type())
+    );
 
     impl Default for ExprSidecar<(), ()> {
         fn default() -> Self { Self(ExprSidecarInner { scope: None, r#type: None }, PhantomData) }
@@ -125,7 +157,7 @@ type Phase2 = sidecars::TheSidecars<ExprSidecar<ScopeId, Option<types::Type>>>;
 /// scope and fully typed
 type Phase3 = sidecars::TheSidecars<ExprSidecar<ScopeId, types::Type>>;
 
-pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
+pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) -> ast::Expr<'a, Phase2> {
     // we can trivially add a type already for anything whose type is definitive from just the
     // parsed ast, everything else we will need to do more work to figure out the type later
 
@@ -162,6 +194,8 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
             }
         },
     });
+
+    e
 }
 
 fn infer_expr_type<'a>(data: &ast::ExprData<'a, Phase2>) -> Option<types::Type> {
