@@ -2,6 +2,9 @@
 #![feature(try_blocks)]
 // #![feature(min_specialization)]
 
+// FIXME should probably turn this back on once we reach a 1.0
+#![allow(unused)]
+
 pub(crate) mod ast;
 pub(crate) mod compiler;
 pub(crate) mod generated;

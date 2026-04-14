@@ -24,9 +24,8 @@ fn main() -> eyre::Result<()> {
 
     let mut mods = Modules(codegen::Scope::new());
 
-    mods.iil()
-        .vis("pub")
-        .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
+    let allows = "allow(non_camel_case_types,non_upper_case_globals,clippy::upper_case_acronyms,clippy::enum_variant_names,unused)";
+    mods.iil().vis("pub").attr(allows);
     mods.iil_hierarchical()
         .vis("pub")
         .scope()
@@ -40,9 +39,7 @@ fn main() -> eyre::Result<()> {
         .vis("pub")
         .scope()
         .raw("use crate::{spv::operand_kind as ok, iil};");
-    mods.spv()
-        .vis("pub")
-        .attr("allow(non_camel_case_types,non_upper_case_globals,unused)");
+    mods.spv().vis("pub").attr(allows);
     mods.spv_operandkind().vis("pub");
     mods.spv_instruction()
         .vis("pub")
