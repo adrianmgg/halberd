@@ -17,14 +17,8 @@ pub struct Universe {
 impl Universe {
     pub fn new() -> Self {
         let root_scope_id = ScopeId::from_idx(0);
-        let scopes = vec![Scope {
-            parent: None,
-            items: Default::default(),
-        }];
-        Self {
-            scopes,
-            root_scope_id,
-        }
+        let scopes = vec![Scope { parent: None, items: Default::default() }];
+        Self { scopes, root_scope_id }
     }
 
     fn get_just_scope(&self, id: ScopeId) -> &Scope {
@@ -39,18 +33,10 @@ impl Universe {
             .expect("Ids should always be valid since we're the only one who can give them out.")
     }
 
-    pub fn get_scope(&self, id: ScopeId) -> ScopeRef<'_> {
-        ScopeRef {
-            universe: self,
-            scope: id,
-        }
-    }
+    pub fn get_scope(&self, id: ScopeId) -> ScopeRef<'_> { ScopeRef { universe: self, scope: id } }
 
     pub fn get_scope_mut(&mut self, id: ScopeId) -> ScopeRefMut<'_> {
-        ScopeRefMut {
-            universe: self,
-            scope: id,
-        }
+        ScopeRefMut { universe: self, scope: id }
     }
 
     pub fn root_scope(&self) -> ScopeRef<'_> { self.get_scope(self.root_scope_id) }
@@ -74,10 +60,8 @@ impl Universe {
 
     fn new_scope(&mut self, parent_id: ScopeId) -> ScopeId {
         let id = ScopeId::from_idx(self.scopes.len());
-        self.scopes.push(Scope {
-            parent: Some(parent_id),
-            items: Default::default(),
-        });
+        self.scopes
+            .push(Scope { parent: Some(parent_id), items: Default::default() });
         id
     }
 }

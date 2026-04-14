@@ -20,45 +20,28 @@ mod sidecars {
     pub struct ExprSidecar<S, T>(ExprSidecarInner, PhantomData<(S, T)>);
 
     impl Default for ExprSidecar<(), ()> {
-        fn default() -> Self {
-            Self(
-                ExprSidecarInner {
-                    scope: None,
-                    r#type: None,
-                },
-                PhantomData,
-            )
-        }
+        fn default() -> Self { Self(ExprSidecarInner { scope: None, r#type: None }, PhantomData) }
     }
 
     impl<S, T> ExprSidecar<S, T> {
         // FIXME wait this should be taking self as owned shouldn't it uh oh
         pub fn with_scope(&self, id: ScopeId) -> ExprSidecar<ScopeId, T> {
             ExprSidecar(
-                ExprSidecarInner {
-                    scope: Some(id),
-                    r#type: self.0.r#type,
-                },
+                ExprSidecarInner { scope: Some(id), r#type: self.0.r#type },
                 PhantomData,
             )
         }
 
         pub fn with_type_none(&self) -> ExprSidecar<S, Option<Type>> {
             ExprSidecar(
-                ExprSidecarInner {
-                    scope: self.0.scope,
-                    r#type: None,
-                },
+                ExprSidecarInner { scope: self.0.scope, r#type: None },
                 PhantomData,
             )
         }
 
         pub fn with_type(&self, r#type: Type) -> ExprSidecar<S, Type> {
             ExprSidecar(
-                ExprSidecarInner {
-                    scope: self.0.scope,
-                    r#type: Some(r#type),
-                },
+                ExprSidecarInner { scope: self.0.scope, r#type: Some(r#type) },
                 PhantomData,
             )
         }
@@ -224,11 +207,7 @@ fn infer_expr_type<'a>(data: &ast::ExprData<'a, Phase2>) -> Option<types::Type> 
                         let column_count = rhs.column_count();
                         // "[RightMatrix's] columns must have the same number of components as the number of columns in LeftMatrix."
                         (rhs.row_count() == lhs.column_count()).then_some(())?;
-                        types::Matrix {
-                            column_type,
-                            column_count,
-                        }
-                        .into()
+                        types::Matrix { column_type, column_count }.into()
                     }
                 }
             }

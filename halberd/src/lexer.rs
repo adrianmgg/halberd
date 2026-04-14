@@ -255,31 +255,19 @@ mod test_lex {
     lex_test!(
         comment_after,
         "a$. hello world",
-        Ok([Spanned {
-            inner: Token::Ident("a"),
-            ..
-        }])
+        Ok([Spanned { inner: Token::Ident("a"), .. }])
     );
     lex_test!(
         comment_prev_line,
         "$. hello world\na",
-        Ok([Spanned {
-            inner: Token::Ident("a"),
-            ..
-        }])
+        Ok([Spanned { inner: Token::Ident("a"), .. }])
     );
     lex_test!(
         multiple_tokens_top_level,
         "if if",
         Ok([
-            Spanned {
-                inner: Token::Keyword(Keyword::If),
-                ..
-            },
-            Spanned {
-                inner: Token::Keyword(Keyword::If),
-                ..
-            }
+            Spanned { inner: Token::Keyword(Keyword::If), .. },
+            Spanned { inner: Token::Keyword(Keyword::If), .. }
         ])
     );
     lex_test_single!(multiple_tokens_tt, "(if if)", Token::Parens(_));
@@ -359,20 +347,13 @@ fn r#type<'src>() -> impl Parser<'src, &'src str, types::Type, LexExtra<'src>> +
         // e.g. 'i32v4'
         nk.then(vector_suffix)
             .map(|(component_type, component_count)| {
-                types::Vector {
-                    component_type,
-                    component_count,
-                }
-                .into()
+                types::Vector { component_type, component_count }.into()
             }),
         // e.g. 'i32m3x2'
         nk.then(matrix_suffix)
             .map(|(component_type, (component_count, column_count))| {
                 types::Matrix {
-                    column_type: types::Vector {
-                        component_type,
-                        component_count,
-                    },
+                    column_type: types::Vector { component_type, component_count },
                     column_count,
                 }
                 .into()

@@ -41,10 +41,7 @@ impl Ctx {
     where
         F: FnOnce(&mut BlockBuilder<VoidLocal, ValuedLocal>, &mut Self) -> Result<Terminal, E>,
     {
-        let mut builder = BlockBuilder {
-            id: self.new_id(),
-            locals: Vec::new(),
-        };
+        let mut builder = BlockBuilder { id: self.new_id(), locals: Vec::new() };
         f(&mut builder, self).map(|terminal| Block {
             id: builder.id,
             locals: builder.locals,
@@ -75,9 +72,6 @@ impl<Void, Valued> BlockBuilder<Void, Valued> {
     pub fn push_valued_local(&mut self, local: Valued) -> BlockLocalRef {
         let new_local_idx = self.locals.len();
         self.locals.push(BlockLocal::Valued(local));
-        BlockLocalRef {
-            block: self.id,
-            local: new_local_idx,
-        }
+        BlockLocalRef { block: self.id, local: new_local_idx }
     }
 }
