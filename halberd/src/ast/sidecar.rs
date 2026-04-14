@@ -1,5 +1,6 @@
-use crate::ast::{Block, Expr, ExprData};
 use chumsky::span::Spanned;
+
+use crate::ast::{Block, Expr, ExprData};
 
 pub(crate) trait Sidecars {
     type Expr: std::fmt::Debug + Clone + PartialEq;
@@ -77,6 +78,7 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
 
 impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     type WithOtherSidecar<S2: Sidecars> = Expr<'a, S2>;
+
     fn map_sidecars<
         'f,
         S2: Sidecars,

@@ -59,8 +59,10 @@ impl Matrix {
     // not strictly needed but good to be consistent w/ `row_count`, plus it's inlined anyways so whatever
     #[inline(always)]
     pub fn column_count(&self) -> u32 { self.column_count }
+
     #[inline(always)]
     pub fn row_count(&self) -> u32 { self.column_type.component_count }
+
     #[inline(always)]
     pub fn component_type(&self) -> NumberKind { self.column_type.component_type }
 }
@@ -97,9 +99,8 @@ macro_rules! mk_option_helper_exts {
 }
 
 pub mod prelude {
-    use crate::util::matches_opt;
-
     use super::*;
+    use crate::util::matches_opt;
 
     mk_option_helper_exts! {
         ExtTwoTypes((Type, Type)) {

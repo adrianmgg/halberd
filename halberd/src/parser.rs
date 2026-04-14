@@ -230,8 +230,9 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
 mod tests {
     use std::path::PathBuf;
 
-    use super::*;
     use rstest::rstest;
+
+    use super::*;
 
     fn tokens_to_parser_input<'tokens, 'src: 'tokens>(
         src: &'src str,

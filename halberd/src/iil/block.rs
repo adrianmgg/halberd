@@ -71,6 +71,7 @@ pub enum BlockLocal<Void, Valued> {
 
 impl<Void, Valued> BlockBuilder<Void, Valued> {
     pub fn push_void_local(&mut self, local: Void) { self.locals.push(BlockLocal::Void(local)); }
+
     pub fn push_valued_local(&mut self, local: Valued) -> BlockLocalRef {
         let new_local_idx = self.locals.len();
         self.locals.push(BlockLocal::Valued(local));
