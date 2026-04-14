@@ -238,7 +238,7 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                     match r#type {
                         None => false,
                         Some(r#type) => {
-                            sidecar.type_maybe_mut().insert(r#type);
+                            *sidecar.type_maybe_mut() = Some(r#type);
                             true
                         }
                     }
