@@ -1,12 +1,13 @@
 use std::borrow::Cow;
 
-use chumsky::input::MappedInput;
-use chumsky::{Parser as _, extra, pratt::*, prelude::*};
+use chumsky::{Parser as _, extra, input::MappedInput, pratt::*, prelude::*};
 use num_rational::BigRational;
 
-use crate::ast::{self, Expr, ExprData};
-use crate::lexer::{self, Keyword, Symbol, Token};
-use crate::types;
+use crate::{
+    ast::{self, Expr, ExprData},
+    lexer::{self, Keyword, Symbol, Token},
+    types,
+};
 
 type ParserInput<'tokens, 'src> =
     MappedInput<'tokens, Token<'src>, SimpleSpan, &'tokens [Spanned<Token<'src>>]>;
@@ -179,10 +180,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                 .to_span()
         };
         macro_rules! mk_ops {
-            (infix($assoc:ident ($assoc_n:literal)), $op:ident) => {
+            (infix($assoc:ident($assoc_n:literal)), $op:ident) => {
                 mk_ops!(infix($assoc($assoc_n)), lexer::Op::$op, ast::InfixOp::$op)
             };
-            (infix($assoc:ident ($assoc_n:literal)), $op_tok:expr, $op_ast:expr) => {
+            (infix($assoc:ident($assoc_n:literal)), $op_tok:expr, $op_ast:expr) => {
                 (
                     infix($assoc($assoc_n), op($op_tok, 0), |l, o, r, _| {
                         Expr::from(ExprData::InfixOp(

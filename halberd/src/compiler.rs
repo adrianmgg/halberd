@@ -182,9 +182,8 @@ fn infer_expr_type<'a>(data: &ast::ExprData<'a, Phase2>) -> Option<types::Type> 
             let rhs_type = rhs.sidecar.type_maybe();
             let lhs_and_rhs = try { (lhs_type?, rhs_type?) };
             match op.inner {
-                ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply => {
-                    lhs_and_rhs.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))
-                }
+                ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply =>
+                    lhs_and_rhs.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs)),
                 ast::InfixOp::Divide => todo!(),
                 // OpDot
                 ast::InfixOp::DotProduct => lhs_and_rhs

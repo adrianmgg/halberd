@@ -132,12 +132,11 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
             ExprData::LiteralInt(_) => 0,
             ExprData::LiteralFloat(_) => 0,
             ExprData::LiteralBool(_) => 0,
-            ExprData::InfixOp(lhs, _, rhs) => {
-                lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns)
-            }
+            ExprData::InfixOp(lhs, _, rhs) =>
+                lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns),
             ExprData::Var(_) => 0,
             ExprData::Declaration { name: _, value } => value.modify_some_sidecars(fns),
-            ExprData::Block(b) => {
+            ExprData::Block(b) =>
                 (b.exprs)
                     .iter_mut()
                     .map(|e| e.modify_some_sidecars(fns))
@@ -145,8 +144,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     + (b.last)
                         .as_mut()
                         .map(|e| e.modify_some_sidecars(fns))
-                        .unwrap_or_default()
-            }
+                        .unwrap_or_default(),
         })
     }
 
