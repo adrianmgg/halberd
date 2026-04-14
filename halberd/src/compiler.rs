@@ -31,6 +31,7 @@ mod sidecars {
     }
 
     impl<S, T> ExprSidecar<S, T> {
+        // FIXME wait this should be taking self as owned shouldn't it uh oh
         pub fn with_scope(&self, id: ScopeId) -> ExprSidecar<ScopeId, T> {
             ExprSidecar(
                 ExprSidecarInner {
@@ -189,7 +190,7 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                                 ast::InfixOp::DotProduct => lhs_and_rhs
                                     .and_is_homogeneous()
                                     .and_is_vector()
-                                    .to_component_type()
+                                    .and_to_component_type()
                                     .and_is_float()
                                     .map(Into::into),
                                 // glsl ext cross()
@@ -199,7 +200,6 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                                     .and_has_n_components(3)
                                     .map(Into::into),
                                 // OpMatrixTimesMatrix
-                                // > RightMatrix must be a matrix with the same Component Type as the Component Type in Result Type. Its number of columns must equal the number of columns in Result Type. Its columns must have the same number of components as the number of columns in LeftMatrix.
                                 ast::InfixOp::MatrixMultiply => {
                                     try {
                                         let lhs = lhs_type.and_is_matrix()?;
@@ -209,10 +209,18 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
                                         let column_type = lhs.column_type;
                                         // "Result Type must be an OpTypeMatrix whose Column Type is a vector of floating-point type."
                                         let component_type = column_type.component_type;
-                                        // lhs_and_rhs.map(|(lhs, rhs)| {
-                                        //     let column_type = lhs
-                                        // })
-                                        todo!()
+                                        component_type.and_is_float()?;
+                                        // "RightMatrix must be a matrix with the same Component Type as the Component Type in Result Type."
+                                        (component_type == rhs.component_type()).then_some(())?;
+                                        // "[RightMatrix's] number of columns must equal the number of columns in Result Type."
+                                        let column_count = rhs.column_count();
+                                        // "[RightMatrix's] columns must have the same number of components as the number of columns in LeftMatrix."
+                                        (rhs.row_count() == lhs.column_count()).then_some(())?;
+                                        types::Matrix {
+                                            column_type,
+                                            column_count,
+                                        }
+                                        .into()
                                     }
                                 }
                             }

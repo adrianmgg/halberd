@@ -65,13 +65,17 @@ impl Matrix {
     pub fn row_count(&self) -> u32 {
         self.column_type.component_count
     }
+    #[inline(always)]
+    pub fn component_type(&self) -> NumberKind {
+        self.column_type.component_type
+    }
 }
 
 macro_rules! mk_option_helper_exts {
     (
         $(
             $extname:ident ($ext_target:ty) {
-                $( $method:ident $(( $($arg:ident : $argty:ty),* ))? -> $result:ty = $self:tt => { $($body:tt)* } )*
+                $( $method:ident $(( $($arg:ident : $argty:ty),* ))? -> $result:ty = $self:pat => { $($body:tt)* } )*
             };
         )*
     ) => {
@@ -80,8 +84,18 @@ macro_rules! mk_option_helper_exts {
                 $( fn $method(self $( $( , $arg: $argty )* )?) -> Option<$result> ; )*
             }
             impl $extname for Option<$ext_target> {
-                $( fn $method($self $( $( , $arg: $argty )* )?) -> Option<$result> {
-                    $($body)*
+                $( fn $method(self $( $( , $arg: $argty )* )?) -> Option<$result> {
+                    match self {
+                        Some($self) => { $($body)* }
+                        None => None,
+                    }
+                } )*
+            }
+            impl $extname for $ext_target {
+                $( fn $method(self $($(, $arg: $argty)*)?) -> Option<$result> {
+                    match self {
+                        $self => { $($body)* }
+                    }
                 } )*
             }
         )*
@@ -95,22 +109,23 @@ pub mod prelude {
 
     mk_option_helper_exts! {
         ExtTwoTypes((Type, Type)) {
-            and_is_homogeneous -> Type = self => { self.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs)) }
+            and_is_homogeneous -> Type = (lhs, rhs) => { (lhs == rhs).then_some(lhs) }
         };
         ExtAnyType(Type) {
-            and_is_vector -> Vector = self => { matches_opt!(self, Some(Type::Vector(v)) => v) }
-            and_is_matrix -> Matrix = self => { matches_opt!(self, Some(Type::Matrix(m)) => m) }
+            and_is_vector -> Vector = t => { matches_opt!(t, Type::Vector(v) => v) }
+            and_is_matrix -> Matrix = t => { matches_opt!(t, Type::Matrix(m) => m) }
         };
         ExtVector(Vector) {
-            to_component_type -> NumberKind = self => { self.map(|v| v.component_type) }
-            and_has_n_components(n: u32) -> Vector = self => { self.and_then(|v| (v.component_count == n).then_some(v)) }
+            // FIXME naming for `and_to_component_type`
+            and_to_component_type -> NumberKind = v => { Some(v.component_type) }
+            and_has_n_components(n: u32) -> Vector = v => { (v.component_count == n).then_some(v) }
         };
         ExtMatrix(Matrix) {
-            to_component_type -> NumberKind = self => { self.map(|v| v.column_type.component_type) }
+            to_component_type -> NumberKind = m => { Some(m.column_type.component_type) }
         };
         ExtNumberKind(NumberKind) {
-            and_is_float -> Float = self => { matches_opt!(self, Some(NumberKind::Float(f)) => f) }
-            and_is_int -> Integer = self => { matches_opt!(self, Some(NumberKind::Integer(i)) => i) }
+            and_is_float -> Float = n => { matches_opt!(n, NumberKind::Float(f) => f) }
+            and_is_int -> Integer = n => { matches_opt!(n, NumberKind::Integer(i) => i) }
         };
     }
 }
