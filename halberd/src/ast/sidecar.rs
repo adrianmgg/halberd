@@ -102,20 +102,16 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     Box::new(rhs.map_sidecars(fns)),
                 ),
                 ExprData::Var(v) => ExprData::Var(v),
-                ExprData::Declaration { name, value } => ExprData::Declaration {
-                    name,
-                    value: Box::new(value.map_sidecars(fns)),
-                },
-                ExprData::Block(Spanned {
-                    inner: Block { exprs, last },
-                    span,
-                }) => ExprData::Block(Spanned {
-                    span,
-                    inner: Block {
-                        exprs: exprs.into_iter().map(|e| e.map_sidecars(fns)).collect(),
-                        last: last.map(|e| Box::new(e.map_sidecars(fns))),
-                    },
-                }),
+                ExprData::Declaration { name, value } =>
+                    ExprData::Declaration { name, value: Box::new(value.map_sidecars(fns)) },
+                ExprData::Block(Spanned { inner: Block { exprs, last }, span }) =>
+                    ExprData::Block(Spanned {
+                        span,
+                        inner: Block {
+                            exprs: exprs.into_iter().map(|e| e.map_sidecars(fns)).collect(),
+                            last: last.map(|e| Box::new(e.map_sidecars(fns))),
+                        },
+                    }),
             },
         }
     }

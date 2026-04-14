@@ -69,12 +69,7 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
         .then(r#type())
         .then_ignore(just(Symbol::Equals))
         .then(function_body)
-        .map(|(((name, args), return_type), body)| ast::Function {
-            name,
-            return_type,
-            args,
-            body,
-        })
+        .map(|(((name, args), return_type), body)| ast::Function { name, return_type, args, body })
         .boxed()
 }
 
@@ -98,11 +93,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                         "for now, all number literals must have explicit types",
                     ));
                     ExprData::LiteralInt(
-                        ast::LiteralInt {
-                            r#type: types::Integer::Signed(64),
-                            value: 1.into(),
-                        }
-                        .with_span(e.span()),
+                        ast::LiteralInt { r#type: types::Integer::Signed(64), value: 1.into() }
+                            .with_span(e.span()),
                     )
                 }
                 Some(types::NumberKind::Float(r#type)) => ExprData::LiteralFloat(

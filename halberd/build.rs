@@ -221,10 +221,7 @@ fn codegen_instruction<'a>(
                     is_expr: matches!(o.kind.as_ref(), "IdRef"),
                 })
                 .collect();
-            CodegenOperands {
-                ret_kind,
-                other_operands,
-            }
+            CodegenOperands { ret_kind, other_operands }
         })
         .unwrap_or_else(|| CodegenOperands {
             ret_kind: InstructionRetKind::Void,
@@ -581,26 +578,11 @@ mod spv_grammar {
     #[derive(Debug, Deserialize)]
     #[serde(tag = "category")]
     pub enum OperandKind {
-        BitEnum {
-            kind: String,
-            enumerants: Vec<BitEnumerant>,
-        },
-        ValueEnum {
-            kind: String,
-            enumerants: Vec<ValueEnumerant>,
-        },
-        Id {
-            kind: String,
-            doc: String,
-        },
-        Literal {
-            kind: String,
-            doc: String,
-        },
-        Composite {
-            kind: String,
-            bases: Vec<String>,
-        },
+        BitEnum { kind: String, enumerants: Vec<BitEnumerant> },
+        ValueEnum { kind: String, enumerants: Vec<ValueEnumerant> },
+        Id { kind: String, doc: String },
+        Literal { kind: String, doc: String },
+        Composite { kind: String, bases: Vec<String> },
     }
 
     #[derive(Debug, Deserialize)]

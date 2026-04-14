@@ -17,12 +17,7 @@ pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {
 }
 
 impl<'a> From<ExprData<'a, NoSidecars>> for Expr<'a, NoSidecars> {
-    fn from(data: ExprData<'a, NoSidecars>) -> Self {
-        Expr {
-            data,
-            sidecar: Default::default(),
-        }
-    }
+    fn from(data: ExprData<'a, NoSidecars>) -> Self { Expr { data, sidecar: Default::default() } }
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr)]
@@ -32,10 +27,7 @@ pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
     LiteralBool(Spanned<bool>),
     InfixOp(Box<Expr<'a, S>>, Spanned<InfixOp>, Box<Expr<'a, S>>),
     Var(Spanned<&'a str>),
-    Declaration {
-        name: Spanned<&'a str>,
-        value: Box<Expr<'a, S>>,
-    },
+    Declaration { name: Spanned<&'a str>, value: Box<Expr<'a, S>> },
     Block(Spanned<Block<'a, S>>),
 }
 
