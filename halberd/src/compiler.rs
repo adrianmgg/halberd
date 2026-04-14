@@ -153,7 +153,7 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
 
     // populate scopes
     let mut e: ast::Expr<'a, Phase1> = e.map_sidecars(&mut SidecarFns {
-        expr: |_: &ast::ExprData<'a, Phase0>, car: ExprSidecar<(), ()>| {
+        expr: &mut |_: &ast::ExprData<'a, Phase0>, car: ExprSidecar<(), ()>| {
             // FIXME placeholder.
             car.with_scope(universe.root_scope_mut().new_subscope())
         },
@@ -161,7 +161,7 @@ pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) {
 
     // fill in initial blanks for all types
     let mut e: ast::Expr<'a, Phase2> = e.map_sidecars(&mut SidecarFns {
-        expr: |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
+        expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
     });
 
     // now start actually populating the types

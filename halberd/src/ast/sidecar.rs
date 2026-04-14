@@ -20,12 +20,14 @@ pub(crate) struct SidecarWalkContexts<Ctx> {
     pub(crate) prior_sibling: Option<Ctx>,
 }
 
-pub(crate) trait Sidecarred<'a, S: Sidecars + 'a> {
+pub(crate) trait Sidecarred<'a, S: Sidecars> {
     type WithOtherSidecar<S2: Sidecars>;
-    fn map_sidecars<S2: Sidecars, MapExpr: FnMut(&'a ExprData<'a, S>, S::Expr) -> S2::Expr>(
+    fn map_sidecars<'f, S2: Sidecars, MapExpr: FnMut(&ExprData<'a, S>, S::Expr) -> S2::Expr>(
         self,
-        fns: &mut SidecarFns<MapExpr>,
-    ) -> Self::WithOtherSidecar<S2>;
+        fns: &mut SidecarFns<&mut MapExpr>,
+    ) -> Self::WithOtherSidecar<S2>
+    where
+        'a: 'f;
 
     // FIXME name
     fn modify_some_sidecars<AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool>(
@@ -73,15 +75,19 @@ pub(crate) trait Sidecarred<'a, S: Sidecars + 'a> {
     }
 }
 
-impl<'a, S: Sidecars + 'a> Sidecarred<'a, S> for Expr<'a, S> {
+impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     type WithOtherSidecar<S2: Sidecars> = Expr<'a, S2>;
     fn map_sidecars<
+        'f,
         S2: Sidecars,
-        MapExpr: FnMut(&'a ExprData<'a, S>, <S as Sidecars>::Expr) -> S2::Expr,
+        MapExpr: FnMut(&ExprData<'a, S>, <S as Sidecars>::Expr) -> S2::Expr,
     >(
         self,
-        fns: &mut SidecarFns<MapExpr>,
-    ) -> Expr<'a, S2> {
+        fns: &mut SidecarFns<&mut MapExpr>,
+    ) -> Expr<'a, S2>
+    where
+        'a: 'f,
+    {
         Expr {
             sidecar: (fns.expr)(&self.data, self.sidecar),
             data: match self.data {
