@@ -67,15 +67,9 @@ fn main() -> eyre::Result<()> {
 // is this the best way to do this? probably not. does it work? absolutely yes
 struct Modules(codegen::Scope);
 impl Modules {
-    fn root(&mut self) -> &mut codegen::Scope {
-        &mut self.0
-    }
-    fn iil(&mut self) -> &mut codegen::Module {
-        self.root().get_or_new_module("iil")
-    }
-    fn iil_flat(&mut self) -> &mut codegen::Module {
-        self.iil().get_or_new_module("flat")
-    }
+    fn root(&mut self) -> &mut codegen::Scope { &mut self.0 }
+    fn iil(&mut self) -> &mut codegen::Module { self.root().get_or_new_module("iil") }
+    fn iil_flat(&mut self) -> &mut codegen::Module { self.iil().get_or_new_module("flat") }
     fn iil_f_instructions(&mut self) -> &mut codegen::Module {
         self.iil_flat().get_or_new_module("instruction")
     }
@@ -85,9 +79,7 @@ impl Modules {
     fn iil_h_instructions(&mut self) -> &mut codegen::Module {
         self.iil_hierarchical().get_or_new_module("instruction")
     }
-    fn spv(&mut self) -> &mut codegen::Module {
-        self.root().get_or_new_module("spv")
-    }
+    fn spv(&mut self) -> &mut codegen::Module { self.root().get_or_new_module("spv") }
     fn spv_operandkind(&mut self) -> &mut codegen::Module {
         self.spv().get_or_new_module("operand_kind")
     }
@@ -623,9 +615,7 @@ mod spv_grammar {
     }
 
     fn hex_literal<'de, D>(deserializer: D) -> Result<u32, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
+    where D: de::Deserializer<'de> {
         use serde::de::Error;
         let s: String = Deserialize::deserialize(deserializer)?;
         if !s.starts_with("0x") {

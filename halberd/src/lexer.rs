@@ -70,29 +70,21 @@ impl<'src> chumsky::container::OrderedSeq<'_, Token<'src>> for Keyword {}
 impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Keyword {
     type Item<'a>
         = Token<'src>
-    where
-        Self: 'a;
+    where Self: 'a;
 
     type Iter<'a>
         = std::iter::Once<Token<'src>>
-    where
-        Self: 'a;
+    where Self: 'a;
 
-    fn seq_iter(&self) -> Self::Iter<'me> {
-        std::iter::once(Token::Keyword(*self))
-    }
+    fn seq_iter(&self) -> Self::Iter<'me> { std::iter::once(Token::Keyword(*self)) }
 
     fn contains(&self, val: &Token<'src>) -> bool
-    where
-        Token<'src>: PartialEq,
-    {
+    where Token<'src>: PartialEq {
         matches!(val, Token::Keyword(kwd) if kwd == self)
     }
 
     fn to_maybe_ref<'b>(item: Self::Item<'b>) -> chumsky::util::MaybeRef<'src, Token<'src>>
-    where
-        'me: 'b,
-    {
+    where 'me: 'b {
         chumsky::util::Maybe::Val(item)
     }
 }
@@ -102,29 +94,21 @@ impl<'src> chumsky::container::OrderedSeq<'_, Token<'src>> for Symbol {}
 impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Symbol {
     type Item<'a>
         = Token<'src>
-    where
-        Self: 'a;
+    where Self: 'a;
 
     type Iter<'a>
         = std::iter::Once<Token<'src>>
-    where
-        Self: 'a;
+    where Self: 'a;
 
-    fn seq_iter(&self) -> Self::Iter<'me> {
-        std::iter::once(Token::Symbol(*self))
-    }
+    fn seq_iter(&self) -> Self::Iter<'me> { std::iter::once(Token::Symbol(*self)) }
 
     fn contains(&self, val: &Token<'src>) -> bool
-    where
-        Token<'src>: PartialEq,
-    {
+    where Token<'src>: PartialEq {
         matches!(val, Token::Symbol(kwd) if kwd == self)
     }
 
     fn to_maybe_ref<'b>(item: Self::Item<'b>) -> chumsky::util::MaybeRef<'src, Token<'src>>
-    where
-        'me: 'b,
-    {
+    where 'me: 'b {
         chumsky::util::Maybe::Val(item)
     }
 }
@@ -492,14 +476,10 @@ fn test_lex_number(#[case] s: &'_ str, #[case] expected: Number) {
 struct FilteredCollector<T>(Vec<T>);
 
 impl<T> FilteredCollector<T> {
-    fn inner(self) -> Vec<T> {
-        self.0
-    }
+    fn inner(self) -> Vec<T> { self.0 }
 }
 impl<T> Default for FilteredCollector<T> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
+    fn default() -> Self { Self(Default::default()) }
 }
 impl<T> chumsky::container::Container<Option<T>> for FilteredCollector<T> {
     fn push(&mut self, item: Option<T>) {
