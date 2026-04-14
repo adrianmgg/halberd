@@ -1,0 +1,5 @@
+unstable_features = true
+fn_single_line = true
+struct_lit_single_line = true
+where_single_line = true
+empty_item_single_line = true

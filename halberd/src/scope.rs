@@ -4,13 +4,9 @@ use std::collections::HashMap;
 pub struct ScopeId(usize);
 
 impl ScopeId {
-    fn into_idx(self) -> usize {
-        self.0
-    }
+    fn into_idx(self) -> usize { self.0 }
 
-    fn from_idx(idx: usize) -> Self {
-        Self(idx)
-    }
+    fn from_idx(idx: usize) -> Self { Self(idx) }
 }
 
 pub struct Universe {
@@ -57,13 +53,9 @@ impl Universe {
         }
     }
 
-    pub fn root_scope(&self) -> ScopeRef<'_> {
-        self.get_scope(self.root_scope_id)
-    }
+    pub fn root_scope(&self) -> ScopeRef<'_> { self.get_scope(self.root_scope_id) }
 
-    pub fn root_scope_mut(&mut self) -> ScopeRefMut<'_> {
-        self.get_scope_mut(self.root_scope_id)
-    }
+    pub fn root_scope_mut(&mut self) -> ScopeRefMut<'_> { self.get_scope_mut(self.root_scope_id) }
 
     fn scope_lookup(&self, scope_id: ScopeId, key: &str) -> Option<&ScopeItem> {
         let mut scope = self.get_just_scope(scope_id);
@@ -119,9 +111,7 @@ impl<'a> ScopeRefMut<'a> {
         self.universe.scope_lookup(self.scope, key)
     }
 
-    pub fn new_subscope(&mut self) -> ScopeId {
-        self.universe.new_scope(self.scope)
-    }
+    pub fn new_subscope(&mut self) -> ScopeId { self.universe.new_scope(self.scope) }
 }
 
 pub enum ScopeItem {

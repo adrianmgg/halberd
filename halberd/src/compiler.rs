@@ -62,42 +62,28 @@ mod sidecars {
     }
 
     impl<T> ExprSidecar<Option<ScopeId>, T> {
-        pub fn scope_maybe(&self) -> Option<ScopeId> {
-            self.0.scope
-        }
-        pub fn scope_maybe_mut(&mut self) -> Option<&mut ScopeId> {
-            self.0.scope.as_mut()
-        }
+        pub fn scope_maybe(&self) -> Option<ScopeId> { self.0.scope }
+        pub fn scope_maybe_mut(&mut self) -> Option<&mut ScopeId> { self.0.scope.as_mut() }
     }
     impl<T> ExprSidecar<ScopeId, T> {
-        pub fn scope(&self) -> ScopeId {
-            unsafe { self.0.scope.unwrap_unchecked() }
-        }
+        pub fn scope(&self) -> ScopeId { unsafe { self.0.scope.unwrap_unchecked() } }
         pub fn scope_mut(&mut self) -> &mut ScopeId {
             unsafe { self.0.scope.as_mut().unwrap_unchecked() }
         }
     }
     impl<S> ExprSidecar<S, Option<Type>> {
-        pub fn type_maybe(&self) -> Option<Type> {
-            self.0.r#type
-        }
-        pub fn type_maybe_mut(&mut self) -> &mut Option<Type> {
-            &mut self.0.r#type
-        }
+        pub fn type_maybe(&self) -> Option<Type> { self.0.r#type }
+        pub fn type_maybe_mut(&mut self) -> &mut Option<Type> { &mut self.0.r#type }
     }
     impl<S> ExprSidecar<S, Type> {
-        pub fn r#type(&self) -> Type {
-            unsafe { self.0.r#type.unwrap_unchecked() }
-        }
+        pub fn r#type(&self) -> Type { unsafe { self.0.r#type.unwrap_unchecked() } }
         pub fn type_mut(&mut self) -> &mut Type {
             unsafe { self.0.r#type.as_mut().unwrap_unchecked() }
         }
     }
 
     impl<T> From<ExprSidecar<(), T>> for ExprSidecar<Option<ScopeId>, T> {
-        fn from(value: ExprSidecar<(), T>) -> Self {
-            Self(value.0, PhantomData)
-        }
+        fn from(value: ExprSidecar<(), T>) -> Self { Self(value.0, PhantomData) }
     }
     impl<T> TryFrom<ExprSidecar<Option<ScopeId>, T>> for ExprSidecar<ScopeId, T> {
         type Error = ();
@@ -112,9 +98,7 @@ mod sidecars {
     }
 
     impl<S> From<ExprSidecar<S, ()>> for ExprSidecar<S, Option<Type>> {
-        fn from(value: ExprSidecar<S, ()>) -> Self {
-            Self(value.0, PhantomData)
-        }
+        fn from(value: ExprSidecar<S, ()>) -> Self { Self(value.0, PhantomData) }
     }
     impl<S> TryFrom<ExprSidecar<S, Option<Type>>> for ExprSidecar<S, Type> {
         type Error = ();
