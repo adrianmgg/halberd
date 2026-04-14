@@ -55,6 +55,18 @@ pub struct Matrix {
     pub column_count: u32,
 }
 
+impl Matrix {
+    // not strictly needed but good to be consistent w/ `row_count`, plus it's inlined anyways so whatever
+    #[inline(always)]
+    pub fn column_count(&self) -> u32 {
+        self.column_count
+    }
+    #[inline(always)]
+    pub fn row_count(&self) -> u32 {
+        self.column_type.component_count
+    }
+}
+
 macro_rules! mk_option_helper_exts {
     (
         $(
@@ -77,31 +89,28 @@ macro_rules! mk_option_helper_exts {
 }
 
 pub mod prelude {
+    use crate::util::matches_opt;
+
     use super::*;
 
     mk_option_helper_exts! {
         ExtTwoTypes((Type, Type)) {
-            and_is_homogeneous -> Type = self => {self.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))}
+            and_is_homogeneous -> Type = self => { self.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs)) }
         };
         ExtAnyType(Type) {
-            and_is_vector -> Vector = self => { self.and_then(|t| match t {
-                Type::Vector(v) => Some(v),
-                _ => None,
-            }) }
-            and_is_matrix -> Matrix = self => { self.and_then(|t| match t {
-                Type::Matrix(m) => Some(m),
-                _ => None,
-            }) }
+            and_is_vector -> Vector = self => { matches_opt!(self, Some(Type::Vector(v)) => v) }
+            and_is_matrix -> Matrix = self => { matches_opt!(self, Some(Type::Matrix(m)) => m) }
         };
         ExtVector(Vector) {
             to_component_type -> NumberKind = self => { self.map(|v| v.component_type) }
             and_has_n_components(n: u32) -> Vector = self => { self.and_then(|v| (v.component_count == n).then_some(v)) }
         };
         ExtMatrix(Matrix) {
+            to_component_type -> NumberKind = self => { self.map(|v| v.column_type.component_type) }
         };
         ExtNumberKind(NumberKind) {
-            and_is_float -> Float = self => { self.and_then(|n| match n { NumberKind::Float(f) => Some(f), _ => None, }) }
-            and_is_int -> Integer = self => { self.and_then(|n| match n { NumberKind::Integer(i) => Some(i), _ => None, }) }
+            and_is_float -> Float = self => { matches_opt!(self, Some(NumberKind::Float(f)) => f) }
+            and_is_int -> Integer = self => { matches_opt!(self, Some(NumberKind::Integer(i)) => i) }
         };
     }
 }
