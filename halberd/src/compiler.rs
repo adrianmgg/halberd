@@ -1,5 +1,5 @@
 use crate::{
-    ast::{self, SidecarFns, Sidecarred, Sidecars},
+    ast::{self, SidecarFns, SidecarWalkContexts, Sidecarred, Sidecars},
     scope::{self, ScopeId},
     types::{self, prelude::*},
 };
@@ -56,6 +56,13 @@ mod sidecars {
     }
 
     impl<S, T> ExprSidecar<S, T> {
+        pub fn with_scope_none(&self) -> ExprSidecar<Option<ScopeId>, T> {
+            ExprSidecar(
+                ExprSidecarInner { scope: None, r#type: self.0.r#type },
+                PhantomData,
+            )
+        }
+
         // FIXME wait this should be taking self as owned shouldn't it uh oh
         pub fn with_scope(&self, id: ScopeId) -> ExprSidecar<ScopeId, T> {
             ExprSidecar(
@@ -83,6 +90,14 @@ mod sidecars {
         pub fn scope_maybe(&self) -> Option<ScopeId> { self.0.scope }
 
         pub fn scope_maybe_mut(&mut self) -> Option<&mut ScopeId> { self.0.scope.as_mut() }
+
+        pub fn try_with_scope_definitely(self) -> Option<ExprSidecar<ScopeId, T>> {
+            if self.0.scope.is_none() {
+                None
+            } else {
+                Some(ExprSidecar(self.0, PhantomData))
+            }
+        }
     }
     impl<T> ExprSidecar<ScopeId, T> {
         pub fn scope(&self) -> ScopeId { unsafe { self.0.scope.unwrap_unchecked() } }
@@ -95,6 +110,14 @@ mod sidecars {
         pub fn type_maybe(&self) -> Option<Type> { self.0.r#type }
 
         pub fn type_maybe_mut(&mut self) -> &mut Option<Type> { &mut self.0.r#type }
+
+        pub fn try_with_type_definitely(self) -> Option<ExprSidecar<S, Type>> {
+            if self.0.r#type.is_none() {
+                None
+            } else {
+                Some(ExprSidecar(self.0, PhantomData))
+            }
+        }
     }
     impl<S> ExprSidecar<S, Type> {
         pub fn r#type(&self) -> Type { unsafe { self.0.r#type.unwrap_unchecked() } }
@@ -150,55 +173,96 @@ pub(crate) use sidecars::{ExprSidecar, NoSidecars};
 
 /// nothing
 type Phase0 = NoSidecars;
+type PhasePartiallyScoped = sidecars::TheSidecars<ExprSidecar<Option<ScopeId>, ()>>;
 /// just scope
-type Phase1 = sidecars::TheSidecars<ExprSidecar<ScopeId, ()>>;
+type PhaseFullyScoped = sidecars::TheSidecars<ExprSidecar<ScopeId, ()>>;
 /// scope, and some types
-type Phase2 = sidecars::TheSidecars<ExprSidecar<ScopeId, Option<types::Type>>>;
+type PhasePartiallyTyped = sidecars::TheSidecars<ExprSidecar<ScopeId, Option<types::Type>>>;
 /// scope and fully typed
-type Phase3 = sidecars::TheSidecars<ExprSidecar<ScopeId, types::Type>>;
+type PhaseFullyTyped = sidecars::TheSidecars<ExprSidecar<ScopeId, types::Type>>;
 
-pub fn foo<'a>(e: ast::Expr<'a, NoSidecars>) -> ast::Expr<'a, Phase2> {
+pub fn foo<'a>(
+    e: ast::Expr<'a, NoSidecars>,
+) -> Result<ast::Expr<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
     // we can trivially add a type already for anything whose type is definitive from just the
     // parsed ast, everything else we will need to do more work to figure out the type later
 
     let mut universe = scope::Universe::new();
 
+    let mut e: ast::Expr<'a, PhasePartiallyScoped> =
+        e.map_sidecars(&mut SidecarFns { expr: &mut |_, car| car.with_scope_none() });
+
     // populate scopes
-    let mut e: ast::Expr<'a, Phase1> = e.map_sidecars(&mut SidecarFns {
-        expr: &mut |_: &ast::ExprData<'a, Phase0>, car: ExprSidecar<(), ()>| {
-            // FIXME placeholder.
-            car.with_scope(universe.root_scope_mut().new_subscope())
+    // let mut e: ast::Expr<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
+    //     expr: &mut |_: &ast::ExprData<'a, Phase0>, car: ExprSidecar<(), ()>| {
+    //         // FIXME placeholder.
+    //         car.with_scope(universe.root_scope_mut().new_subscope())
+    //     },
+    // });
+    e.iteratively_modify_sidecars_2(&mut SidecarFns {
+        expr: &mut |_data,
+                    car: &mut ExprSidecar<Option<ScopeId>, ()>,
+                    ctx: SidecarWalkContexts<Option<ScopeId>>| {
+            unimplemented!();
+            car.scope_maybe_mut();
+            (false, None)
         },
     });
 
+    e.validate_sidecars(&mut SidecarFns {
+        expr: &mut |data, car| {
+            car.scope_maybe().is_none().then_some(
+                ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
+                    .with_message("spans were not correctly applied everywhere! (this is an internal compiler error, not a problem with your code)")
+                    .finish(),
+            )
+        },
+    })?;
+    let mut e: ast::Expr<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
+        expr: &mut |data, car| car.try_with_scope_definitely().unwrap(),
+    });
+
     // fill in initial blanks for all types
-    let mut e: ast::Expr<'a, Phase2> = e.map_sidecars(&mut SidecarFns {
+    let mut e: ast::Expr<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
         expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
     });
 
     // now start actually populating the types
     e.iteratively_modify_sidecars(&mut SidecarFns {
-        expr: |data: &ast::ExprData<'a, Phase2>, sidecar: &mut ExprSidecar<_, _>| match sidecar
-            .type_maybe_mut()
-        {
-            Some(_) => false,
-            sidecar_type @ None => {
-                let r#type = infer_expr_type(data);
-                match r#type {
-                    None => false,
-                    Some(r#type) => {
-                        *sidecar_type = Some(r#type);
-                        true
+        expr: |data: &ast::ExprData<'a, PhasePartiallyTyped>, sidecar: &mut ExprSidecar<_, _>| {
+            match sidecar.type_maybe_mut() {
+                Some(_) => false,
+                sidecar_type @ None => {
+                    let r#type = infer_expr_type(data);
+                    match r#type {
+                        None => false,
+                        Some(r#type) => {
+                            *sidecar_type = Some(r#type);
+                            true
+                        }
                     }
                 }
             }
         },
     });
 
-    e
+    e.validate_sidecars(&mut SidecarFns {
+        expr: &mut |data, car| {
+            car.type_maybe().is_none().then_some(
+                ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
+                    .with_message("unable to infer type")
+                    .finish(),
+            )
+        },
+    })?;
+    let mut e: ast::Expr<'a, PhaseFullyTyped> = e.map_sidecars(&mut SidecarFns {
+        expr: &mut |data, car| car.try_with_type_definitely().unwrap(),
+    });
+
+    Ok(e)
 }
 
-fn infer_expr_type<'a>(data: &ast::ExprData<'a, Phase2>) -> Option<types::Type> {
+fn infer_expr_type<'a>(data: &ast::ExprData<'a, PhasePartiallyTyped>) -> Option<types::Type> {
     match data {
         ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
         ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),

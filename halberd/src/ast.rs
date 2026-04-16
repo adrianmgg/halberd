@@ -31,6 +31,24 @@ pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
     Block(Spanned<Block<'a, S>>),
 }
 
+impl<'a, S: Sidecars> Expr<'a, S> {
+    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
+}
+
+impl<'a, S: Sidecars> ExprData<'a, S> {
+    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan {
+        match self {
+            ExprData::LiteralInt(Spanned { span, .. })
+            | ExprData::LiteralFloat(Spanned { span, .. })
+            | ExprData::LiteralBool(Spanned { span, .. })
+            | ExprData::Var(Spanned { span, .. })
+            | ExprData::Block(Spanned { span, .. })
+            | ExprData::InfixOp(_, Spanned { span, .. }, _)
+            | ExprData::Declaration { name: Spanned { span, .. }, value: _ } => *span,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LiteralInt {
     pub r#type: types::Integer,
