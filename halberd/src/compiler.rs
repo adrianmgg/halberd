@@ -14,9 +14,7 @@ use sidecars::{ExprSidecarS, ExprSidecarT};
 
 macro_rules! named_sidecars {
     ($($(#[$m:meta])* $name:ident = $expr_scope:ty, $expr_type:ty;)*) => {
-        $($(#[$m])*
-        pub(crate) type $name = sidecars::TheSidecars<ExprSidecar<$expr_scope, $expr_type>>;
-        )*
+        $($(#[$m])* pub(crate) type $name = sidecars::TheSidecars<ExprSidecar<$expr_scope, $expr_type>>; )*
     };
 }
 named_sidecars! {
@@ -35,9 +33,6 @@ named_sidecars! {
 pub fn foo<'a>(
     e: ast::Expr<'a, NoSidecars>,
 ) -> Result<ast::Expr<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
-    // we can trivially add a type already for anything whose type is definitive from just the
-    // parsed ast, everything else we will need to do more work to figure out the type later
-
     let mut universe = scope::Universe::new();
 
     let mut e: ast::Expr<'a, PhasePartiallyScoped> =
