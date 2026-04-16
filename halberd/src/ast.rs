@@ -10,7 +10,7 @@ pub(crate) use sidecar::*;
 
 use crate::{compiler::NoSidecars, types};
 
-#[derive_where(Debug, Clone, PartialEq; S::Expr)]
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
 pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {
     pub data: ExprData<'a, S>,
     pub sidecar: S::Expr,
@@ -20,7 +20,7 @@ impl<'a> From<ExprData<'a, NoSidecars>> for Expr<'a, NoSidecars> {
     fn from(data: ExprData<'a, NoSidecars>) -> Self { Expr { data, sidecar: Default::default() } }
 }
 
-#[derive_where(Debug, Clone, PartialEq; S::Expr)]
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
 pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
     LiteralInt(Spanned<LiteralInt>),
     LiteralFloat(Spanned<LiteralFloat>),
@@ -61,7 +61,7 @@ pub(crate) struct LiteralFloat {
     pub value: BigRational,
 }
 
-#[derive_where(Debug, Clone, PartialEq; S::Expr)]
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
 pub(crate) struct Block<'a, S: Sidecars = NoSidecars> {
     pub(crate) exprs: Vec<Expr<'a, S>>,
     pub(crate) last: Option<Box<Expr<'a, S>>>,
@@ -78,13 +78,27 @@ pub(crate) enum InfixOp {
     MatrixMultiply,
 }
 
-#[derive_where(Debug, Clone, PartialEq; S::Expr)]
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
 pub(crate) struct Function<'a, S: Sidecars = NoSidecars> {
+    pub data: FunctionData<'a, S>,
+    pub sidecar: S::Func,
+}
+
+impl<'a, S: Sidecars> Function<'a, S> {
+    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
+}
+
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
+pub(crate) struct FunctionData<'a, S: Sidecars = NoSidecars> {
     pub(crate) name: Spanned<Cow<'a, str>>,
     pub(crate) return_type: Spanned<types::Type>,
     pub(crate) args: Vec<FunctionArg<'a>>,
     // jury's out on if this is a good idea but i'm gonna try it
     pub(crate) body: Expr<'a, S>,
+}
+
+impl<'a, S: Sidecars> FunctionData<'a, S> {
+    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.name.span }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,7 +107,7 @@ pub(crate) struct FunctionArg<'a> {
     pub(crate) r#type: Spanned<types::Type>,
 }
 
-#[derive_where(Debug; S::Expr)]
+#[derive_where(Debug; S::Expr, S::Func)]
 #[derive_where(Default;)]
 pub(crate) struct File<'a, S: Sidecars = NoSidecars> {
     pub(crate) functions: HashMap<Cow<'a, str>, Vec<Function<'a, S>>>,
@@ -101,7 +115,7 @@ pub(crate) struct File<'a, S: Sidecars = NoSidecars> {
 
 impl<'a, S: Sidecars> chumsky::container::Container<Function<'a, S>> for File<'a, S> {
     fn push(&mut self, item: Function<'a, S>) {
-        let a = item.name.inner.clone();
+        let a = item.data.name.inner.clone();
         self.functions.entry(a).or_default().push(item);
     }
 }

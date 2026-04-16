@@ -1,15 +1,16 @@
 use chumsky::span::Spanned;
 
-use crate::ast::{Block, Expr, ExprData};
+use crate::ast::{Block, Expr, ExprData, FunctionData};
 
 pub(crate) trait Sidecars {
     type Expr: std::fmt::Debug + Clone + PartialEq;
+    type Func: std::fmt::Debug + Clone + PartialEq;
 }
 
-// FIXME rename this, we use it for more than just fns now
 #[derive(Clone, Copy)]
-pub(crate) struct SidecarFns<ExprFn> {
+pub(crate) struct SidecarFns<ExprFn, FuncFn> {
     pub expr: ExprFn,
+    pub func: FuncFn,
 }
 
 // NOTE Default impl means our Default will set
@@ -24,22 +25,35 @@ pub(crate) struct SidecarWalkContexts<Ctx> {
 pub(crate) trait Sidecarred<'a, S: Sidecars> {
     type WithOtherSidecar<S2: Sidecars>;
 
-    fn map_sidecars<'f, S2: Sidecars, MapExpr: FnMut(&ExprData<'a, S>, S::Expr) -> S2::Expr>(
+    fn map_sidecars<
+        'f,
+        S2: Sidecars,
+        MapExpr: FnMut(&ExprData<'a, S>, S::Expr) -> S2::Expr,
+        MapFunc: FnMut(&FunctionData<'a, S>, S::Func) -> S2::Func,
+    >(
         self,
-        fns: &mut SidecarFns<&mut MapExpr>,
+        fns: &mut SidecarFns<&mut MapExpr, &mut MapFunc>,
     ) -> Self::WithOtherSidecar<S2>
     where
         'a: 'f;
 
-    fn validate_sidecars_into<E, CheckExpr: FnMut(&ExprData<'a, S>, &S::Expr) -> Option<E>>(
+    fn validate_sidecars_into<
+        E,
+        CheckExpr: FnMut(&ExprData<'a, S>, &S::Expr) -> Option<E>,
+        CheckFunc: FnMut(&FunctionData<'a, S>, &S::Func) -> Option<E>,
+    >(
         &self,
-        fns: &mut SidecarFns<&mut CheckExpr>,
+        fns: &mut SidecarFns<&mut CheckExpr, &mut CheckFunc>,
         errors: &mut Vec<E>,
     );
 
-    fn validate_sidecars<E, CheckExpr: FnMut(&ExprData<'a, S>, &S::Expr) -> Option<E>>(
+    fn validate_sidecars<
+        E,
+        CheckExpr: FnMut(&ExprData<'a, S>, &S::Expr) -> Option<E>,
+        CheckFunc: FnMut(&FunctionData<'a, S>, &S::Func) -> Option<E>,
+    >(
         &self,
-        fns: &mut SidecarFns<&mut CheckExpr>,
+        fns: &mut SidecarFns<&mut CheckExpr, &mut CheckFunc>,
     ) -> Result<(), Vec<E>> {
         let mut errs = Vec::new();
         self.validate_sidecars_into(fns, &mut errs);
@@ -47,14 +61,20 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
     }
 
     // FIXME name
-    fn modify_some_sidecars<AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool>(
+    fn modify_some_sidecars<
+        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool,
+        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut S::Func) -> bool,
+    >(
         &mut self,
-        fns: &mut SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
     ) -> usize;
 
-    fn iteratively_modify_sidecars<AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool>(
+    fn iteratively_modify_sidecars<
+        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool,
+        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut S::Func) -> bool,
+    >(
         &mut self,
-        fns: &mut SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
     ) {
         loop {
             if self.modify_some_sidecars(fns) == 0 {
@@ -68,23 +88,39 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
     //      but if it causes other problems then maybe worth going back to the drawing board on
     //      that
     fn modify_some_sidecars_2<
+        Global,
         Ctx: Clone + Default,
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustExpr: FnMut(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustFunc: FnMut(
+            &mut Global,
+            &FunctionData<'a, S>,
+            &mut S::Func,
+            SidecarWalkContexts<Ctx>,
+        ) -> (bool, Ctx),
     >(
         &mut self,
-        fns: &mut SidecarFns<&mut AdjustExpr>,
+        global: &mut Global,
+        fns: &mut SidecarFns<&mut AdjustExpr, &mut AdjustFunc>,
         ctxs: Option<SidecarWalkContexts<Ctx>>,
     ) -> (usize, Ctx);
 
     fn iteratively_modify_sidecars_2<
+        Global,
         Ctx: Clone + Default,
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustExpr: FnMut(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustFunc: FnMut(
+            &mut Global,
+            &FunctionData<'a, S>,
+            &mut S::Func,
+            SidecarWalkContexts<Ctx>,
+        ) -> (bool, Ctx),
     >(
         &mut self,
-        fns: &mut SidecarFns<&mut AdjustExpr>,
+        global: &mut Global,
+        fns: &mut SidecarFns<&mut AdjustExpr, &mut AdjustFunc>,
     ) {
         loop {
-            let (n, _) = self.modify_some_sidecars_2(fns, None);
+            let (n, _) = self.modify_some_sidecars_2(global, fns, None);
             if n == 0 {
                 break;
             }
@@ -99,9 +135,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
         'f,
         S2: Sidecars,
         MapExpr: FnMut(&ExprData<'a, S>, <S as Sidecars>::Expr) -> S2::Expr,
+        MapFunc: FnMut(&FunctionData<'a, S>, <S as Sidecars>::Func) -> S2::Func,
     >(
         self,
-        fns: &mut SidecarFns<&mut MapExpr>,
+        fns: &mut SidecarFns<&mut MapExpr, &mut MapFunc>,
     ) -> Expr<'a, S2>
     where
         'a: 'f,
@@ -135,9 +172,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     fn validate_sidecars_into<
         E,
         CheckExpr: FnMut(&ExprData<'a, S>, &<S as Sidecars>::Expr) -> Option<E>,
+        CheckFunc: FnMut(&FunctionData<'a, S>, &<S as Sidecars>::Func) -> Option<E>,
     >(
         &self,
-        fns: &mut SidecarFns<&mut CheckExpr>,
+        fns: &mut SidecarFns<&mut CheckExpr, &mut CheckFunc>,
         errors: &mut Vec<E>,
     ) {
         if let Some(error) = (fns.expr)(&self.data, &self.sidecar) {
@@ -168,9 +206,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
 
     fn modify_some_sidecars<
         AdjustExpr: FnMut(&ExprData<'a, S>, &mut <S as Sidecars>::Expr) -> bool,
+        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut <S as Sidecars>::Func) -> bool,
     >(
         &mut self,
-        fns: &mut SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
     ) -> usize {
         (if (fns.expr)(&self.data, &mut self.sidecar) {
             1
@@ -197,15 +236,23 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     }
 
     fn modify_some_sidecars_2<
+        Global,
         Ctx: Clone + Default,
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustExpr: FnMut(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustFunc: FnMut(
+            &mut Global,
+            &FunctionData<'a, S>,
+            &mut S::Func,
+            SidecarWalkContexts<Ctx>,
+        ) -> (bool, Ctx),
     >(
         &mut self,
-        fns: &mut SidecarFns<&mut AdjustExpr>,
+        global: &mut Global,
+        fns: &mut SidecarFns<&mut AdjustExpr, &mut AdjustFunc>,
         ctxs: Option<SidecarWalkContexts<Ctx>>,
     ) -> (usize, Ctx) {
         let (changed, ctx_here) =
-            (fns.expr)(&self.data, &mut self.sidecar, ctxs.unwrap_or_default());
+            (fns.expr)(global, &self.data, &mut self.sidecar, ctxs.unwrap_or_default());
 
         let mut n_changes = if changed { 1 } else { 0 };
         let mut ctx_final = ctx_here.clone();
@@ -219,6 +266,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 #[allow(unused_assignments)]
                 {
                     let (n, c) = $child_node.modify_some_sidecars_2(
+                        global,
                         fns,
                         Some(SidecarWalkContexts {
                             parent: ctx_here.clone(),
