@@ -90,8 +90,8 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
     fn modify_some_sidecars_2<
         Global,
         Ctx: Clone + Default,
-        AdjustExpr: FnMut(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
-        AdjustFunc: FnMut(
+        AdjustExpr: Fn(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustFunc: Fn(
             &mut Global,
             &FunctionData<'a, S>,
             &mut S::Func,
@@ -100,15 +100,15 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
     >(
         &mut self,
         global: &mut Global,
-        fns: &mut SidecarFns<&mut AdjustExpr, &mut AdjustFunc>,
+        fns: &SidecarFns<AdjustExpr, AdjustFunc>,
         ctxs: Option<SidecarWalkContexts<Ctx>>,
     ) -> (usize, Ctx);
 
     fn iteratively_modify_sidecars_2<
         Global,
         Ctx: Clone + Default,
-        AdjustExpr: FnMut(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
-        AdjustFunc: FnMut(
+        AdjustExpr: Fn(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustFunc: Fn(
             &mut Global,
             &FunctionData<'a, S>,
             &mut S::Func,
@@ -117,7 +117,7 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
     >(
         &mut self,
         global: &mut Global,
-        fns: &mut SidecarFns<&mut AdjustExpr, &mut AdjustFunc>,
+        fns: &SidecarFns<AdjustExpr, AdjustFunc>,
     ) {
         loop {
             let (n, _) = self.modify_some_sidecars_2(global, fns, None);
@@ -238,8 +238,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     fn modify_some_sidecars_2<
         Global,
         Ctx: Clone + Default,
-        AdjustExpr: FnMut(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
-        AdjustFunc: FnMut(
+        AdjustExpr: Fn(&mut Global, &ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
+        AdjustFunc: Fn(
             &mut Global,
             &FunctionData<'a, S>,
             &mut S::Func,
@@ -248,11 +248,15 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     >(
         &mut self,
         global: &mut Global,
-        fns: &mut SidecarFns<&mut AdjustExpr, &mut AdjustFunc>,
+        fns: &SidecarFns<AdjustExpr, AdjustFunc>,
         ctxs: Option<SidecarWalkContexts<Ctx>>,
     ) -> (usize, Ctx) {
-        let (changed, ctx_here) =
-            (fns.expr)(global, &self.data, &mut self.sidecar, ctxs.unwrap_or_default());
+        let (changed, ctx_here) = (fns.expr)(
+            global,
+            &self.data,
+            &mut self.sidecar,
+            ctxs.unwrap_or_default(),
+        );
 
         let mut n_changes = if changed { 1 } else { 0 };
         let mut ctx_final = ctx_here.clone();

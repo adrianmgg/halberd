@@ -55,8 +55,11 @@ pub fn foo<'a>(
 
     // populate scopes
     // FIXME this doesn't need to be using adding its own second level of Option...
-    e.iteratively_modify_sidecars_2(&mut SidecarFns {
-        func: &mut |data, car, ctx| match car {
+    e.iteratively_modify_sidecars_2(&mut universe, &SidecarFns {
+        func: |universe: &mut scope::Universe,
+               data: &ast::FunctionData<'a, PhasePartiallyScoped>,
+               car: &mut Option<ScopeId>,
+               _ctx| match car {
             Some(scope) => (false, Some(*scope)),
             scope @ None => {
                 let new_scope = universe.root_scope_mut().new_subscope();
@@ -64,9 +67,10 @@ pub fn foo<'a>(
                 (true, Some(new_scope))
             }
         },
-        expr: &mut |data,
-                    car: &mut ExprSidecar<Option<ScopeId>, ()>,
-                    ctx: SidecarWalkContexts<Option<ScopeId>>| {
+        expr: |universe: &mut scope::Universe,
+               data: &ast::ExprData<'a, PhasePartiallyScoped>,
+               car: &mut ExprSidecar<Option<ScopeId>, ()>,
+               ctx: SidecarWalkContexts<Option<ScopeId>>| {
             match car.scope_mut() {
                 Some(scope) => (false, Some(*scope)),
                 scope @ None => {
@@ -102,18 +106,16 @@ pub fn foo<'a>(
 
     // now start actually populating the types
     e.iteratively_modify_sidecars(&mut SidecarFns {
-        func: |data, scope| false,
-        expr: |data: &ast::ExprData<'a, PhasePartiallyTyped>, sidecar: &mut ExprSidecar<_, _>| {
-            match sidecar.type_mut() {
-                Some(_) => false,
-                sidecar_type @ None => {
-                    let r#type = infer_expr_type(data);
-                    match r#type {
-                        None => false,
-                        Some(r#type) => {
-                            *sidecar_type = Some(r#type);
-                            true
-                        }
+        func: |data: &_, scope: &mut _| false,
+        expr: |data: &_, sidecar: &mut ExprSidecar<_, _>| match sidecar.type_mut() {
+            Some(_) => false,
+            sidecar_type @ None => {
+                let r#type = infer_expr_type(data);
+                match r#type {
+                    None => false,
+                    Some(r#type) => {
+                        *sidecar_type = Some(r#type);
+                        true
                     }
                 }
             }
