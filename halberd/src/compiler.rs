@@ -89,7 +89,7 @@ mod sidecars {
     impl<T> ExprSidecar<Option<ScopeId>, T> {
         pub fn scope_maybe(&self) -> Option<ScopeId> { self.0.scope }
 
-        pub fn scope_maybe_mut(&mut self) -> Option<&mut ScopeId> { self.0.scope.as_mut() }
+        pub fn scope_maybe_mut(&mut self) -> &mut Option<ScopeId> { &mut self.0.scope }
 
         pub fn try_with_scope_definitely(self) -> Option<ExprSidecar<ScopeId, T>> {
             if self.0.scope.is_none() {
@@ -193,22 +193,28 @@ pub fn foo<'a>(
         e.map_sidecars(&mut SidecarFns { expr: &mut |_, car| car.with_scope_none() });
 
     // populate scopes
-    // let mut e: ast::Expr<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
-    //     expr: &mut |_: &ast::ExprData<'a, Phase0>, car: ExprSidecar<(), ()>| {
-    //         // FIXME placeholder.
-    //         car.with_scope(universe.root_scope_mut().new_subscope())
-    //     },
-    // });
     e.iteratively_modify_sidecars_2(&mut SidecarFns {
-        expr: &mut |_data,
+        expr: &mut |data,
                     car: &mut ExprSidecar<Option<ScopeId>, ()>,
                     ctx: SidecarWalkContexts<Option<ScopeId>>| {
-            unimplemented!();
-            car.scope_maybe_mut();
-            (false, None)
+            match car.scope_maybe_mut() {
+                Some(scope) => (false, Some(*scope)),
+                scope @ None => {
+                    let super_scope = ctx.prior_sibling.flatten().or(ctx.parent);
+                    if let Some(new_scope) =
+                        super_scope.map(|s| universe.get_scope_mut(s).new_subscope())
+                    {
+                        *scope = Some(new_scope);
+                        (true, Some(new_scope))
+                    } else {
+                        (false, None)
+                    }
+                }
+            }
         },
     });
 
+    // ensure all scopes populated
     e.validate_sidecars(&mut SidecarFns {
         expr: &mut |data, car| {
             car.scope_maybe().is_none().then_some(
