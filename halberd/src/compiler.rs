@@ -12,22 +12,35 @@ mod sidecars;
 pub(crate) use sidecars::ExprSidecar;
 use sidecars::{ExprSidecarS, ExprSidecarT};
 
-macro_rules! named_sidecars {
-    ($($(#[$m:meta])* $name:ident = $expr_scope:ty, $expr_type:ty;)*) => {
-        $($(#[$m])* pub(crate) type $name = sidecars::TheSidecars<ExprSidecar<$expr_scope, $expr_type>>; )*
-    };
+/// nothing
+pub(crate) struct NoSidecars;
+impl Sidecars for NoSidecars {
+    type Expr = ExprSidecar<(), ()>;
+    type Func = ();
 }
-named_sidecars! {
-    /// nothing
-    NoSidecars = (), ();
-    /// some scopes
-    PhasePartiallyScoped = Option<ScopeId>, ();
-    /// just scope
-    PhaseFullyScoped = ScopeId, ();
-    /// scope, and some types
-    PhasePartiallyTyped = ScopeId, Option<types::Type>;
-    /// scope and fully typed
-    PhaseFullyTyped = ScopeId, types::Type;
+/// some scopes
+pub(crate) struct PhasePartiallyScoped;
+impl Sidecars for PhasePartiallyScoped {
+    type Expr = ExprSidecar<Option<ScopeId>, ()>;
+    type Func = Option<ScopeId>;
+}
+/// just scope
+pub(crate) struct PhaseFullyScoped;
+impl Sidecars for PhaseFullyScoped {
+    type Expr = ExprSidecar<ScopeId, ()>;
+    type Func = ScopeId;
+}
+/// scope, and some types
+pub(crate) struct PhasePartiallyTyped;
+impl Sidecars for PhasePartiallyTyped {
+    type Expr = ExprSidecar<ScopeId, Option<types::Type>>;
+    type Func = ScopeId;
+}
+/// scope and fully typed
+pub(crate) struct PhaseFullyTyped;
+impl Sidecars for PhaseFullyTyped {
+    type Expr = ExprSidecar<ScopeId, types::Type>;
+    type Func = ScopeId;
 }
 
 pub fn foo<'a>(
@@ -35,12 +48,22 @@ pub fn foo<'a>(
 ) -> Result<ast::Expr<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
     let mut universe = scope::Universe::new();
 
-    let mut e: ast::Expr<'a, PhasePartiallyScoped> =
-        e.map_sidecars(&mut SidecarFns { expr: &mut |_, car| car.with_scope_none() });
+    let mut e: ast::Expr<'a, PhasePartiallyScoped> = e.map_sidecars(&mut SidecarFns {
+        func: &mut |_, _| None,
+        expr: &mut |_, car| car.with_scope_none(),
+    });
 
     // populate scopes
     // FIXME this doesn't need to be using adding its own second level of Option...
     e.iteratively_modify_sidecars_2(&mut SidecarFns {
+        func: &mut |data, car, ctx| match car {
+            Some(scope) => (false, Some(*scope)),
+            scope @ None => {
+                let new_scope = universe.root_scope_mut().new_subscope();
+                *scope = Some(new_scope);
+                (true, Some(new_scope))
+            }
+        },
         expr: &mut |data,
                     car: &mut ExprSidecar<Option<ScopeId>, ()>,
                     ctx: SidecarWalkContexts<Option<ScopeId>>| {
@@ -63,25 +86,23 @@ pub fn foo<'a>(
 
     // ensure all scopes populated
     e.validate_sidecars(&mut SidecarFns {
-        expr: &mut |data, car| {
-            car.scope().is_none().then_some(
-                ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
-                    .with_message("spans were not correctly applied everywhere! (this is an internal compiler error, not a problem with your code)")
-                    .finish(),
-            )
-        },
+        func: &mut |data, scope| validate_has_scope(*scope, data.span()),
+        expr: &mut |data, car| validate_has_scope(car.scope(), data.span()),
     })?;
     let mut e: ast::Expr<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
+        func: &mut |data, scope| scope.unwrap(),
         expr: &mut |data, car| car.try_with_scope_definitely().unwrap(),
     });
 
     // fill in initial blanks for all types
     let mut e: ast::Expr<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
+        func: &mut |_, scope| scope,
         expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
     });
 
     // now start actually populating the types
     e.iteratively_modify_sidecars(&mut SidecarFns {
+        func: |data, scope| false,
         expr: |data: &ast::ExprData<'a, PhasePartiallyTyped>, sidecar: &mut ExprSidecar<_, _>| {
             match sidecar.type_mut() {
                 Some(_) => false,
@@ -100,6 +121,7 @@ pub fn foo<'a>(
     });
 
     e.validate_sidecars(&mut SidecarFns {
+        func: &mut |_, _| None,
         expr: &mut |data, car| {
             car.r#type().is_none().then_some(
                 ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
@@ -109,10 +131,22 @@ pub fn foo<'a>(
         },
     })?;
     let mut e: ast::Expr<'a, PhaseFullyTyped> = e.map_sidecars(&mut SidecarFns {
+        func: &mut |_, scope| scope,
         expr: &mut |data, car| car.try_with_type_definitely().unwrap(),
     });
 
     Ok(e)
+}
+
+fn validate_has_scope<'a>(
+    scope: Option<ScopeId>,
+    span: chumsky::span::SimpleSpan,
+) -> Option<ariadne::Report<'a>> {
+    scope.is_none().then_some(
+        ariadne::Report::build(ariadne::ReportKind::Error, span.into_range())
+            .with_message("spans were not correctly applied everywhere! (this is an internal compiler error, not a problem with your code)")
+            .finish(),
+    )
 }
 
 fn infer_expr_type<'a>(data: &ast::ExprData<'a, PhasePartiallyTyped>) -> Option<types::Type> {

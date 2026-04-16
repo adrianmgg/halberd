@@ -11,6 +11,7 @@ struct ExprSidecarInner {
     r#type: Option<Type>,
 }
 
+// FIXME rename
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ExprSidecar<S, T>(ExprSidecarInner, PhantomData<(S, T)>);
@@ -164,11 +165,4 @@ impl<S> TryFrom<ExprSidecar<S, Option<Type>>> for ExprSidecar<S, Type> {
             Ok(Self(inner, PhantomData))
         }
     }
-}
-
-// FIXME give this a better name
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TheSidecars<Expr>(PhantomData<Expr>);
-impl<Expr: PartialEq + Clone + std::fmt::Debug> crate::ast::Sidecars for TheSidecars<Expr> {
-    type Expr = Expr;
 }
