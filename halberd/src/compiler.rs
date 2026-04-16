@@ -165,21 +165,21 @@ mod sidecars {
     impl<Expr: PartialEq + Clone + std::fmt::Debug> crate::ast::Sidecars for TheSidecars<Expr> {
         type Expr = Expr;
     }
-
-    pub type NoSidecars = TheSidecars<ExprSidecar<(), ()>>;
 }
 
-pub(crate) use sidecars::{ExprSidecar, NoSidecars};
+pub(crate) use sidecars::ExprSidecar;
 
 /// nothing
-type Phase0 = NoSidecars;
-type PhasePartiallyScoped = sidecars::TheSidecars<ExprSidecar<Option<ScopeId>, ()>>;
+pub(crate) type NoSidecars = sidecars::TheSidecars<ExprSidecar<(), ()>>;
+/// some scopes
+pub(crate) type PhasePartiallyScoped = sidecars::TheSidecars<ExprSidecar<Option<ScopeId>, ()>>;
 /// just scope
-type PhaseFullyScoped = sidecars::TheSidecars<ExprSidecar<ScopeId, ()>>;
+pub(crate) type PhaseFullyScoped = sidecars::TheSidecars<ExprSidecar<ScopeId, ()>>;
 /// scope, and some types
-type PhasePartiallyTyped = sidecars::TheSidecars<ExprSidecar<ScopeId, Option<types::Type>>>;
+pub(crate) type PhasePartiallyTyped =
+    sidecars::TheSidecars<ExprSidecar<ScopeId, Option<types::Type>>>;
 /// scope and fully typed
-type PhaseFullyTyped = sidecars::TheSidecars<ExprSidecar<ScopeId, types::Type>>;
+pub(crate) type PhaseFullyTyped = sidecars::TheSidecars<ExprSidecar<ScopeId, types::Type>>;
 
 pub fn foo<'a>(
     e: ast::Expr<'a, NoSidecars>,

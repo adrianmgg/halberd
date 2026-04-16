@@ -1,6 +1,6 @@
 #![feature(trait_alias)]
 #![feature(try_blocks)]
-// #![feature(min_specialization)]
+#![feature(macro_metavar_expr_concat)]
 
 // FIXME should probably turn this back on once we reach a 1.0
 #![allow(unused)]
