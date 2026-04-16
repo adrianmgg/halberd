@@ -69,7 +69,13 @@ pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Fun
         .then(r#type())
         .then_ignore(just(Symbol::Equals))
         .then(function_body)
-        .map(|(((name, args), return_type), body)| ast::Function { name, return_type, args, body })
+        .map(|(((name, args), return_type), body)| ast::FunctionData {
+            name,
+            return_type,
+            args,
+            body,
+        })
+        .map(ast::Function::from)
         .boxed()
 }
 

@@ -84,6 +84,12 @@ pub(crate) struct Function<'a, S: Sidecars = NoSidecars> {
     pub sidecar: S::Func,
 }
 
+impl<'a> From<FunctionData<'a, NoSidecars>> for Function<'a, NoSidecars> {
+    fn from(data: FunctionData<'a, NoSidecars>) -> Self {
+        Function { data, sidecar: Default::default() }
+    }
+}
+
 impl<'a, S: Sidecars> Function<'a, S> {
     pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
 }
