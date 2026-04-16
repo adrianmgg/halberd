@@ -23,12 +23,28 @@ pub(crate) struct SidecarWalkContexts<Ctx> {
 
 pub(crate) trait Sidecarred<'a, S: Sidecars> {
     type WithOtherSidecar<S2: Sidecars>;
+
     fn map_sidecars<'f, S2: Sidecars, MapExpr: FnMut(&ExprData<'a, S>, S::Expr) -> S2::Expr>(
         self,
         fns: &mut SidecarFns<&mut MapExpr>,
     ) -> Self::WithOtherSidecar<S2>
     where
         'a: 'f;
+
+    fn validate_sidecars_into<E, CheckExpr: FnMut(&ExprData<'a, S>, &S::Expr) -> Option<E>>(
+        &self,
+        fns: &mut SidecarFns<&mut CheckExpr>,
+        errors: &mut Vec<E>,
+    );
+
+    fn validate_sidecars<E, CheckExpr: FnMut(&ExprData<'a, S>, &S::Expr) -> Option<E>>(
+        &self,
+        fns: &mut SidecarFns<&mut CheckExpr>,
+    ) -> Result<(), Vec<E>> {
+        let mut errs = Vec::new();
+        self.validate_sidecars_into(fns, &mut errs);
+        if errs.is_empty() { Ok(()) } else { Err(errs) }
+    }
 
     // FIXME name
     fn modify_some_sidecars<AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool>(
@@ -56,7 +72,7 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
         AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
     >(
         &mut self,
-        fns: &mut SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<&mut AdjustExpr>,
         ctxs: Option<SidecarWalkContexts<Ctx>>,
     ) -> (usize, Ctx);
 
@@ -65,7 +81,7 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
         AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
     >(
         &mut self,
-        fns: &mut SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<&mut AdjustExpr>,
     ) {
         loop {
             let (n, _) = self.modify_some_sidecars_2(fns, None);
@@ -116,6 +132,40 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
         }
     }
 
+    fn validate_sidecars_into<
+        E,
+        CheckExpr: FnMut(&ExprData<'a, S>, &<S as Sidecars>::Expr) -> Option<E>,
+    >(
+        &self,
+        fns: &mut SidecarFns<&mut CheckExpr>,
+        errors: &mut Vec<E>,
+    ) {
+        if let Some(error) = (fns.expr)(&self.data, &self.sidecar) {
+            errors.push(error);
+        }
+        match &self.data {
+            ExprData::LiteralInt(_)
+            | ExprData::LiteralFloat(_)
+            | ExprData::LiteralBool(_)
+            | ExprData::Var(_) => {}
+            ExprData::InfixOp(lhs, _, rhs) => {
+                lhs.validate_sidecars_into(fns, errors);
+                rhs.validate_sidecars_into(fns, errors);
+            }
+            ExprData::Declaration { name: _, value } => {
+                value.validate_sidecars_into(fns, errors);
+            }
+            ExprData::Block(Spanned { inner: block, .. }) => {
+                for expr in block.exprs.iter() {
+                    expr.validate_sidecars_into(fns, errors);
+                }
+                if let Some(last_expr) = &block.last {
+                    last_expr.validate_sidecars_into(fns, errors);
+                }
+            }
+        }
+    }
+
     fn modify_some_sidecars<
         AdjustExpr: FnMut(&ExprData<'a, S>, &mut <S as Sidecars>::Expr) -> bool,
     >(
@@ -151,7 +201,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
         AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr, SidecarWalkContexts<Ctx>) -> (bool, Ctx),
     >(
         &mut self,
-        fns: &mut SidecarFns<AdjustExpr>,
+        fns: &mut SidecarFns<&mut AdjustExpr>,
         ctxs: Option<SidecarWalkContexts<Ctx>>,
     ) -> (usize, Ctx) {
         let (changed, ctx_here) =
