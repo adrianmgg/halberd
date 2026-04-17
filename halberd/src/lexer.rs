@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use chumsky::prelude::*;
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -28,12 +30,46 @@ pub enum Token<'src> {
     Type(types::Type),
 }
 
+impl<'src> Display for Token<'src> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::Keyword(keyword) => write!(f, "{keyword}"),
+            Token::Symbol(symbol) => write!(f, "{symbol}"),
+            Token::DollarIdent(ident) => write!(f, "${ident}"),
+            Token::Ident(ident) => write!(f, "{ident}"),
+            Token::Op { op, lifts } => {
+                write!(f, "{op}")?;
+                for _ in 0..(*lifts) {
+                    write!(f, "^")?;
+                }
+                Ok(())
+            }
+            Token::Parens(tokens) => write!(f, "(...)"),
+            Token::Braces(tokens) => write!(f, "{{...}}"),
+            Token::Number(number) => number.fmt(f),
+            Token::Type(r#type) => r#type.fmt(f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Symbol {
     Semicolon,
     Colon,
     Equals,
     Comma,
+}
+
+impl Display for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Symbol::Semicolon => ";",
+            Symbol::Colon => ":",
+            Symbol::Equals => "=",
+            Symbol::Comma => ",",
+        };
+        write!(f, "{s}")
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -46,10 +82,36 @@ pub enum Keyword {
     False,
 }
 
+impl Display for Keyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Keyword::Function => write!(f, "fn"),
+            Keyword::Let => write!(f, "let"),
+            Keyword::If => write!(f, "if"),
+            Keyword::Else => write!(f, "else"),
+            Keyword::True => write!(f, "true"),
+            Keyword::False => write!(f, "false"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Number {
     pub value: NumberValue,
     pub kind: Option<types::NumberKind>,
+}
+
+impl Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.value {
+            NumberValue::Int(big_int) => big_int.fmt(f)?,
+            NumberValue::Float(ratio) => ratio.fmt(f)?,
+        }
+        if let Some(kind) = &self.kind {
+            kind.fmt(f)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -120,6 +182,21 @@ pub enum Op {
     DotProduct,
     CrossProduct,
     MatrixMultiply,
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Op::Add => "+",
+            Op::Subtract => "-",
+            Op::Multiply => "*",
+            Op::Divide => "/",
+            Op::DotProduct => "*.",
+            Op::CrossProduct => "*><",
+            Op::MatrixMultiply => "*@",
+        };
+        write!(f, "{s}")
+    }
 }
 
 type LexExtra<'src> = chumsky::extra::Err<Rich<'src, char, SimpleSpan>>;
