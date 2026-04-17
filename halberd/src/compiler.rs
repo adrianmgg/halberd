@@ -90,8 +90,6 @@ fn populate_types<'a>(
     });
     let mut universe = universe.map(|_| NamespaceItemPartiallyTyped::default());
 
-    // FIXME need to insert function argument types into universe too
-
     // infer types
     e.iteratively_modify_sidecars_2(&mut universe, (), &SidecarFns {
         func: |universe: &mut scope::Universe<_>,
@@ -106,10 +104,12 @@ fn populate_types<'a>(
             )]
             let changed = (data.args.iter())
                 .map(|arg| {
-                    if scope_bound
-                        .lookup(&arg.name)
-                        .is_some_and(|item: &NamespaceItemPartiallyTyped| item.r#type.is_none())
-                    {
+                    if matches!(
+                        scope_bound.lookup(&arg.name),
+                        Some(NamespaceItemPartiallyTyped { r#type: None })
+                    ) {
+                        // FIXME maybe making lookup_and_modify work like a `map` too would let us
+                        //       write these better
                         let found = scope_bound.lookup_and_modify(
                             &arg.name,
                             |item: &mut NamespaceItemPartiallyTyped| {
@@ -323,7 +323,8 @@ fn infer_expr_type<'a>(
             .get_scope(scope)
             .lookup(name)
             .and_then(|i| i.r#type),
-        // FIXME wait. is our ast wrong here WHOOPS
+        // FIXME declaration AST should really have type annotation in it...
+        // FIXME also declarations should maybe be Void typed actually
         ast::ExprData::Declaration { name: _, value } => value.sidecar.r#type(),
         ast::ExprData::Block(spanned) => match &spanned.inner.last {
             // blocks with no terminal expression get the type void
