@@ -29,6 +29,18 @@ macro_rules! impl_conversion_copy_deref {
 }
 pub(crate) use impl_conversion_copy_deref;
 
+/// helper to create a Debug impl using an existing Display impl
+macro_rules! impl_debug_via_display {
+    ($t:ty) => {
+        impl ::std::fmt::Debug for $t {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                f.write_fmt(format_args!("{self}"))
+            }
+        }
+    };
+}
+pub(crate) use impl_debug_via_display;
+
 /// ```rust
 /// enum A {
 ///     X(u32),
