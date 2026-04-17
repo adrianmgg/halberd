@@ -39,6 +39,8 @@ impl Universe {
         ScopeRefMut { universe: self, scope: id }
     }
 
+    pub fn root_scope_id(&self) -> ScopeId { self.root_scope_id }
+
     pub fn root_scope(&self) -> ScopeRef<'_> { self.get_scope(self.root_scope_id) }
 
     pub fn root_scope_mut(&mut self) -> ScopeRefMut<'_> { self.get_scope_mut(self.root_scope_id) }
