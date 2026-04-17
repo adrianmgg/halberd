@@ -44,45 +44,40 @@ impl Sidecars for PhaseFullyTyped {
 }
 
 pub fn foo<'a>(
-    e: ast::Expr<'a, NoSidecars>,
-) -> Result<ast::Expr<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
+    e: ast::File<'a, NoSidecars>,
+) -> Result<ast::File<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
     let mut universe = scope::Universe::new();
 
-    let mut e: ast::Expr<'a, PhasePartiallyScoped> = e.map_sidecars(&mut SidecarFns {
+    let mut e: ast::File<'a, PhasePartiallyScoped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |_, _| None,
         expr: &mut |_, car| car.with_scope_none(),
     });
 
     // populate scopes
-    // FIXME this doesn't need to be using adding its own second level of Option...
-    e.iteratively_modify_sidecars_2(&mut universe, &SidecarFns {
+    let root_scope = universe.root_scope_id();
+    e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {
         func: |universe: &mut scope::Universe,
                data: &ast::FunctionData<'a, PhasePartiallyScoped>,
                car: &mut Option<ScopeId>,
                _ctx| match car {
-            Some(scope) => (false, Some(*scope)),
+            Some(scope) => (false, *scope),
             scope @ None => {
                 let new_scope = universe.root_scope_mut().new_subscope();
                 *scope = Some(new_scope);
-                (true, Some(new_scope))
+                (true, new_scope)
             }
         },
         expr: |universe: &mut scope::Universe,
                data: &ast::ExprData<'a, PhasePartiallyScoped>,
                car: &mut ExprSidecar<Option<ScopeId>, ()>,
-               ctx: SidecarWalkContexts<Option<ScopeId>>| {
+               ctx: SidecarWalkContexts<ScopeId>| {
             match car.scope_mut() {
-                Some(scope) => (false, Some(*scope)),
+                Some(scope) => (false, *scope),
                 scope @ None => {
-                    let super_scope = ctx.prior_sibling.flatten().or(ctx.parent);
-                    if let Some(new_scope) =
-                        super_scope.map(|s| universe.get_scope_mut(s).new_subscope())
-                    {
-                        *scope = Some(new_scope);
-                        (true, Some(new_scope))
-                    } else {
-                        (false, None)
-                    }
+                    let super_scope = ctx.prior_sibling.unwrap_or(ctx.parent);
+                    let new_scope = universe.get_scope_mut(super_scope).new_subscope();
+                    *scope = Some(new_scope);
+                    (true, new_scope)
                 }
             }
         },
@@ -93,13 +88,13 @@ pub fn foo<'a>(
         func: &mut |data, scope| validate_has_scope(*scope, data.span()),
         expr: &mut |data, car| validate_has_scope(car.scope(), data.span()),
     })?;
-    let mut e: ast::Expr<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
+    let mut e: ast::File<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |data, scope| scope.unwrap(),
         expr: &mut |data, car| car.try_with_scope_definitely().unwrap(),
     });
 
     // fill in initial blanks for all types
-    let mut e: ast::Expr<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
+    let mut e: ast::File<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |_, scope| scope,
         expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
     });
@@ -132,7 +127,7 @@ pub fn foo<'a>(
             )
         },
     })?;
-    let mut e: ast::Expr<'a, PhaseFullyTyped> = e.map_sidecars(&mut SidecarFns {
+    let mut e: ast::File<'a, PhaseFullyTyped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |_, scope| scope,
         expr: &mut |data, car| car.try_with_type_definitely().unwrap(),
     });
