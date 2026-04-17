@@ -9,6 +9,7 @@ impl ScopeId {
     fn from_idx(idx: usize) -> Self { Self(idx) }
 }
 
+#[derive(Debug)]
 pub struct Universe<Item> {
     scopes: Vec<Scope<Item>>,
     root_scope_id: ScopeId,
@@ -112,6 +113,7 @@ impl<Item> Universe<Item> {
     }
 }
 
+#[derive(Debug)]
 pub struct Scope<Item> {
     // TODO maybe make id nonzero so we get more compact representations of these?
     //      losing a single value of 2^64 possible ids in order to cut down the size

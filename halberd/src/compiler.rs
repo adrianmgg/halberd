@@ -58,13 +58,19 @@ pub(crate) struct NamespaceItemFullyTyped {
 
 pub fn compile<'a>(
     e: ast::File<'a, NoSidecars>,
-) -> Result<ast::File<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
+) -> Result<
+    (
+        ast::File<'a, PhaseFullyTyped>,
+        scope::Universe<NamespaceItemFullyTyped>,
+    ),
+    Vec<ariadne::Report<'a>>,
+> {
     let mut universe = scope::Universe::new();
 
     let (e, universe) = populate_scopes(e, universe)?;
     let (e, universe) = populate_types(e, universe)?;
 
-    Ok(e)
+    Ok((e, universe))
 }
 
 fn populate_types<'a>(
@@ -87,24 +93,60 @@ fn populate_types<'a>(
     // FIXME need to insert function argument types into universe too
 
     // infer types
-    e.iteratively_modify_sidecars(&mut SidecarFns {
-        func: |data: &_, scope: &mut _| false,
-        expr: |data: &_, sidecar: &mut ExprSidecar<_, _>| match sidecar.type_mut() {
-            Some(_) => false,
-            sidecar_type @ None => {
-                let r#type = infer_expr_type(data);
-                match r#type {
-                    None => false,
-                    Some(r#type) => {
-                        *sidecar_type = Some(r#type);
-                        if let ast::ExprData::Declaration { name, value } = data {
-                            assert!(
-                                universe
-                                    .get_scope_mut(sidecar.scope())
-                                    .lookup_and_modify(name.inner, |x| x.r#type = Some(r#type))
-                            );
-                        }
+    e.iteratively_modify_sidecars_2(&mut universe, (), &SidecarFns {
+        func: |universe: &mut scope::Universe<_>,
+               data: &ast::FunctionData<'a, PhasePartiallyTyped>,
+               scope: &mut <PhasePartiallyTyped as Sidecars>::Func,
+               _| {
+            dbg!(&universe);
+            let mut scope_bound = universe.get_scope_mut(*scope);
+            #[allow(
+                clippy::map_all_any_identity,
+                reason = "any() is short-circuiting, which we don't want here"
+            )]
+            let changed = (data.args.iter())
+                .map(|arg| {
+                    if scope_bound
+                        .lookup(&arg.name)
+                        .is_some_and(|item: &NamespaceItemPartiallyTyped| item.r#type.is_none())
+                    {
+                        let found = scope_bound.lookup_and_modify(
+                            &arg.name,
+                            |item: &mut NamespaceItemPartiallyTyped| {
+                                item.r#type = Some(arg.r#type.inner)
+                            },
+                        );
+                        assert!(found);
                         true
+                    } else {
+                        false
+                    }
+                })
+                .any(std::convert::identity);
+            (changed, ())
+        },
+        expr: |universe: &mut scope::Universe<_>,
+               data: &_,
+               sidecar: &mut <PhasePartiallyTyped as Sidecars>::Expr,
+               _| {
+            let scope = sidecar.scope();
+            match sidecar.type_mut() {
+                Some(_) => (false, ()),
+                sidecar_type @ None => {
+                    let r#type = infer_expr_type(data, scope, universe);
+                    match r#type {
+                        None => (false, ()),
+                        Some(r#type) => {
+                            *sidecar_type = Some(r#type);
+                            // if we just figured out the type of a variable, set that in the scope
+                            if let ast::ExprData::Declaration { name, value } = data {
+                                assert!(universe.get_scope_mut(sidecar.scope()).lookup_and_modify(
+                                    name.inner,
+                                    |i: &mut NamespaceItemPartiallyTyped| i.r#type = Some(r#type)
+                                ));
+                            }
+                            (true, ())
+                        }
                     }
                 }
             }
@@ -150,10 +192,19 @@ fn populate_scopes<'a>(
 
     let root_scope = universe.root_scope_id();
     e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {
-        func: |universe: &mut scope::Universe<_>, data: &_, car: &mut _, _ctx| match car {
+        func: |universe: &mut scope::Universe<_>,
+               data: &ast::FunctionData<_>,
+               car: &mut _,
+               _ctx| match car {
             Some(scope) => (false, *scope),
             scope @ None => {
                 let new_scope = universe.root_scope_mut().new_subscope();
+                // insert the function's args into its scope
+                for arg in data.args.iter() {
+                    universe
+                        .get_scope_mut(new_scope)
+                        .insert(arg.name.inner.clone(), NamespaceItemNothing);
+                }
                 *scope = Some(new_scope);
                 (true, new_scope)
             }
@@ -216,7 +267,11 @@ fn validate_has_scope<'a>(
     )
 }
 
-fn infer_expr_type<'a>(data: &ast::ExprData<'a, PhasePartiallyTyped>) -> Option<types::Type> {
+fn infer_expr_type<'a>(
+    data: &ast::ExprData<'a, PhasePartiallyTyped>,
+    scope: ScopeId,
+    universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
+) -> Option<types::Type> {
     match data {
         ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
         ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),
@@ -264,7 +319,10 @@ fn infer_expr_type<'a>(data: &ast::ExprData<'a, PhasePartiallyTyped>) -> Option<
                 }
             }
         }
-        ast::ExprData::Var(_) => None,
+        ast::ExprData::Var(chumsky::span::Spanned { inner: name, .. }) => universe
+            .get_scope(scope)
+            .lookup(name)
+            .and_then(|i| i.r#type),
         // FIXME wait. is our ast wrong here WHOOPS
         ast::ExprData::Declaration { name: _, value } => value.sidecar.r#type(),
         ast::ExprData::Block(spanned) => match &spanned.inner.last {
