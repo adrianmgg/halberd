@@ -43,17 +43,73 @@ impl Sidecars for PhaseFullyTyped {
     type Func = ScopeId;
 }
 
-pub fn foo<'a>(
+pub fn compile<'a>(
     e: ast::File<'a, NoSidecars>,
 ) -> Result<ast::File<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
     let mut universe = scope::Universe::new();
+
+    let e = populate_scopes(e, universe)?;
+    let e = populate_types(e)?;
+
+    Ok(e)
+}
+
+fn populate_types<'a>(
+    e: ast::File<'a, PhaseFullyScoped>,
+) -> Result<ast::File<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
+    // fill in blanks for all the types
+    let mut e: ast::File<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
+        func: &mut |_, scope| scope,
+        expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
+    });
+
+    // infer types
+    e.iteratively_modify_sidecars(&mut SidecarFns {
+        func: |data: &_, scope: &mut _| false,
+        expr: |data: &_, sidecar: &mut ExprSidecar<_, _>| match sidecar.type_mut() {
+            Some(_) => false,
+            sidecar_type @ None => {
+                let r#type = infer_expr_type(data);
+                match r#type {
+                    None => false,
+                    Some(r#type) => {
+                        *sidecar_type = Some(r#type);
+                        true
+                    }
+                }
+            }
+        },
+    });
+    e.validate_sidecars(&mut SidecarFns {
+        func: &mut |_, _| None,
+        expr: &mut |data, car| {
+            car.r#type().is_none().then_some(
+                ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
+                    .with_message("unable to infer type")
+                    .finish(),
+            )
+        },
+    })?;
+
+    let mut e: ast::File<'a, PhaseFullyTyped> = e.map_sidecars(&mut SidecarFns {
+        func: &mut |_, scope| scope,
+        expr: &mut |data, car| car.try_with_type_definitely().unwrap(),
+    });
+    Ok(e)
+}
+
+fn populate_scopes<'a>(
+    e: ast::File<'a>,
+    mut universe: scope::Universe,
+) -> Result<ast::File<'a, PhaseFullyScoped>, Vec<ariadne::Report<'a>>> {
+    // FIXME this should really just use a map instead of an iteratively modify,
+    //       but i haven't written a map for the new API yet
 
     let mut e: ast::File<'a, PhasePartiallyScoped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |_, _| None,
         expr: &mut |_, car| car.with_scope_none(),
     });
 
-    // populate scopes
     let root_scope = universe.root_scope_id();
     e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {
         func: |universe: &mut scope::Universe, data: &_, car: &mut _, _ctx| match car {
@@ -80,53 +136,13 @@ pub fn foo<'a>(
         },
     });
 
-    // ensure all scopes populated
     e.validate_sidecars(&mut SidecarFns {
         func: &mut |data, scope| validate_has_scope(*scope, data.span()),
         expr: &mut |data, car| validate_has_scope(car.scope(), data.span()),
     })?;
-    let mut e: ast::File<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
+    let e: ast::File<'a, PhaseFullyScoped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |data, scope| scope.unwrap(),
         expr: &mut |data, car| car.try_with_scope_definitely().unwrap(),
-    });
-
-    // fill in initial blanks for all types
-    let mut e: ast::File<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
-        func: &mut |_, scope| scope,
-        expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
-    });
-
-    // now start actually populating the types
-    e.iteratively_modify_sidecars(&mut SidecarFns {
-        func: |data: &_, scope: &mut _| false,
-        expr: |data: &_, sidecar: &mut ExprSidecar<_, _>| match sidecar.type_mut() {
-            Some(_) => false,
-            sidecar_type @ None => {
-                let r#type = infer_expr_type(data);
-                match r#type {
-                    None => false,
-                    Some(r#type) => {
-                        *sidecar_type = Some(r#type);
-                        true
-                    }
-                }
-            }
-        },
-    });
-
-    e.validate_sidecars(&mut SidecarFns {
-        func: &mut |_, _| None,
-        expr: &mut |data, car| {
-            car.r#type().is_none().then_some(
-                ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
-                    .with_message("unable to infer type")
-                    .finish(),
-            )
-        },
-    })?;
-    let mut e: ast::File<'a, PhaseFullyTyped> = e.map_sidecars(&mut SidecarFns {
-        func: &mut |_, scope| scope,
-        expr: &mut |data, car| car.try_with_type_definitely().unwrap(),
     });
 
     Ok(e)
