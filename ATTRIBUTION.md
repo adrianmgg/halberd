@@ -1,1 +1,0 @@
-- much of the chumsky-based lexing & parsing code is based on [chumsky's "nano_rust" example](https://github.com/zesterer/chumsky/blob/main/examples/nano_rust.rs), [chumsky's "mini_ml" example](https://github.com/zesterer/chumsky/blob/main/examples/mini_ml.rs)
