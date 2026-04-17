@@ -243,6 +243,8 @@ mod tests {
     #[case::bool_literal_true("true")]
     #[case::bool_literal_false("false")]
     #[case::variable_reference("foo")]
+    #[case::block_without_terminal("{foo; bar; baz;}")]
+    #[case::block_with_terminal("{foo; bar; baz}")]
     fn test_expr_parses(#[case] src: &'_ str) {
         let tokens = crate::lexer::lexer()
             .parse(src)
