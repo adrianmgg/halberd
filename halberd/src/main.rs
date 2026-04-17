@@ -26,7 +26,7 @@ fn main() {
         if let Ok(tokens) = tokens {
             let input = tokens[..].split_spanned((0..line.len()).into());
             if let Ok(file) = dbg!(parser::file().parse(input).into_result()) {
-                let expr_typed = compiler::foo(file);
+                let expr_typed = compiler::compile(file);
                 dbg!(expr_typed);
             }
         }
