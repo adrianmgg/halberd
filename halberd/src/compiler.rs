@@ -157,7 +157,12 @@ fn populate_types<'a>(
         expr: &mut |data, car| {
             car.r#type().is_none().then_some(
                 ariadne::Report::build(ariadne::ReportKind::Error, data.span().into_range())
+                    .with_code(3)
                     .with_message("unable to infer type")
+                    .with_label(
+                        ariadne::Label::new(data.span().into_range())
+                            .with_message("at this expression"),
+                    )
                     .finish(),
             )
         },
@@ -262,6 +267,7 @@ fn validate_has_scope<'a>(
 ) -> Option<ariadne::Report<'a>> {
     scope.is_none().then_some(
         ariadne::Report::build(ariadne::ReportKind::Error, span.into_range())
+            .with_code(3)
             .with_message("spans were not correctly applied everywhere! (this is an internal compiler error, not a problem with your code)")
             .finish(),
     )
