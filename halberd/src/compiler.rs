@@ -56,10 +56,7 @@ pub fn foo<'a>(
     // populate scopes
     let root_scope = universe.root_scope_id();
     e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {
-        func: |universe: &mut scope::Universe,
-               data: &ast::FunctionData<'a, PhasePartiallyScoped>,
-               car: &mut Option<ScopeId>,
-               _ctx| match car {
+        func: |universe: &mut scope::Universe, data: &_, car: &mut _, _ctx| match car {
             Some(scope) => (false, *scope),
             scope @ None => {
                 let new_scope = universe.root_scope_mut().new_subscope();
@@ -68,9 +65,9 @@ pub fn foo<'a>(
             }
         },
         expr: |universe: &mut scope::Universe,
-               data: &ast::ExprData<'a, PhasePartiallyScoped>,
-               car: &mut ExprSidecar<Option<ScopeId>, ()>,
-               ctx: SidecarWalkContexts<ScopeId>| {
+               data: &_,
+               car: &mut ExprSidecar<_, _>,
+               ctx: SidecarWalkContexts<_>| {
             match car.scope_mut() {
                 Some(scope) => (false, *scope),
                 scope @ None => {
