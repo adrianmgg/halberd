@@ -26,8 +26,20 @@ fn main() {
         if let Ok(tokens) = tokens {
             let input = tokens[..].split_spanned((0..line.len()).into());
             if let Ok(file) = dbg!(parser::file().parse(input).into_result()) {
-                let expr_typed = compiler::compile(file);
-                dbg!(&expr_typed);
+                println!(
+                    "================================================================================"
+                );
+                match compiler::compile(file) {
+                    Ok((file, universe)) => {
+                        dbg!(file, universe);
+                    }
+                    Err(errors) => {
+                        let src = ariadne::Source::from(&line);
+                        for error in errors {
+                            error.eprint(&src);
+                        }
+                    }
+                }
             }
         }
     }
