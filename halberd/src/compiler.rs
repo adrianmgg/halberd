@@ -43,25 +43,48 @@ impl Sidecars for PhaseFullyTyped {
     type Func = ScopeId;
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct NamespaceItemNothing;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct NamespaceItemPartiallyTyped {
+    pub(crate) r#type: Option<types::Type>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NamespaceItemFullyTyped {
+    pub(crate) r#type: types::Type,
+}
+
 pub fn compile<'a>(
     e: ast::File<'a, NoSidecars>,
 ) -> Result<ast::File<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
     let mut universe = scope::Universe::new();
 
-    let e = populate_scopes(e, universe)?;
-    let e = populate_types(e)?;
+    let (e, universe) = populate_scopes(e, universe)?;
+    let (e, universe) = populate_types(e, universe)?;
 
     Ok(e)
 }
 
 fn populate_types<'a>(
     e: ast::File<'a, PhaseFullyScoped>,
-) -> Result<ast::File<'a, PhaseFullyTyped>, Vec<ariadne::Report<'a>>> {
+    universe: scope::Universe<NamespaceItemNothing>,
+) -> Result<
+    (
+        ast::File<'a, PhaseFullyTyped>,
+        scope::Universe<NamespaceItemFullyTyped>,
+    ),
+    Vec<ariadne::Report<'a>>,
+> {
     // fill in blanks for all the types
     let mut e: ast::File<'a, PhasePartiallyTyped> = e.map_sidecars(&mut SidecarFns {
         func: &mut |_, scope| scope,
         expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
     });
+    let mut universe = universe.map(|_| NamespaceItemPartiallyTyped::default());
+
+    // FIXME need to insert function argument types into universe too
 
     // infer types
     e.iteratively_modify_sidecars(&mut SidecarFns {
@@ -74,6 +97,13 @@ fn populate_types<'a>(
                     None => false,
                     Some(r#type) => {
                         *sidecar_type = Some(r#type);
+                        if let ast::ExprData::Declaration { name, value } = data {
+                            assert!(
+                                universe
+                                    .get_scope_mut(sidecar.scope())
+                                    .lookup_and_modify(name.inner, |x| x.r#type = Some(r#type))
+                            );
+                        }
                         true
                     }
                 }
@@ -95,13 +125,21 @@ fn populate_types<'a>(
         func: &mut |_, scope| scope,
         expr: &mut |data, car| car.try_with_type_definitely().unwrap(),
     });
-    Ok(e)
+    // FIXME don't just unwrap these
+    let universe = universe.map(|item| NamespaceItemFullyTyped { r#type: item.r#type.unwrap() });
+    Ok((e, universe))
 }
 
 fn populate_scopes<'a>(
     e: ast::File<'a>,
-    mut universe: scope::Universe,
-) -> Result<ast::File<'a, PhaseFullyScoped>, Vec<ariadne::Report<'a>>> {
+    mut universe: scope::Universe<NamespaceItemNothing>,
+) -> Result<
+    (
+        ast::File<'a, PhaseFullyScoped>,
+        scope::Universe<NamespaceItemNothing>,
+    ),
+    Vec<ariadne::Report<'a>>,
+> {
     // FIXME this should really just use a map instead of an iteratively modify,
     //       but i haven't written a map for the new API yet
 
@@ -112,7 +150,7 @@ fn populate_scopes<'a>(
 
     let root_scope = universe.root_scope_id();
     e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {
-        func: |universe: &mut scope::Universe, data: &_, car: &mut _, _ctx| match car {
+        func: |universe: &mut scope::Universe<_>, data: &_, car: &mut _, _ctx| match car {
             Some(scope) => (false, *scope),
             scope @ None => {
                 let new_scope = universe.root_scope_mut().new_subscope();
@@ -120,7 +158,7 @@ fn populate_scopes<'a>(
                 (true, new_scope)
             }
         },
-        expr: |universe: &mut scope::Universe,
+        expr: |universe: &mut scope::Universe<_>,
                data: &_,
                car: &mut ExprSidecar<_, _>,
                ctx: SidecarWalkContexts<_>| {
@@ -128,7 +166,26 @@ fn populate_scopes<'a>(
                 Some(scope) => (false, *scope),
                 scope @ None => {
                     let super_scope = ctx.prior_sibling.unwrap_or(ctx.parent);
-                    let new_scope = universe.get_scope_mut(super_scope).new_subscope();
+                    // TODO can we continue doing it this way (child nodes have *same* namespace
+                    //      as their parent), or do we instead need to distinguish a sub-node from
+                    //      the top one?
+                    let new_scope = match data {
+                        ast::ExprData::LiteralInt(..)
+                        | ast::ExprData::LiteralFloat(..)
+                        | ast::ExprData::LiteralBool(..)
+                        | ast::ExprData::Var(..)
+                        | ast::ExprData::InfixOp(..) => super_scope,
+                        // blocks get a new scope
+                        ast::ExprData::Block(..) =>
+                            universe.get_scope_mut(super_scope).new_subscope(),
+                        ast::ExprData::Declaration { name, value } => {
+                            let new_scope = universe.get_scope_mut(super_scope).new_subscope();
+                            universe
+                                .get_scope_mut(new_scope)
+                                .insert(name.inner, Default::default());
+                            new_scope
+                        }
+                    };
                     *scope = Some(new_scope);
                     (true, new_scope)
                 }
@@ -145,7 +202,7 @@ fn populate_scopes<'a>(
         expr: &mut |data, car| car.try_with_scope_definitely().unwrap(),
     });
 
-    Ok(e)
+    Ok((e, universe))
 }
 
 fn validate_has_scope<'a>(
