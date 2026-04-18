@@ -34,11 +34,11 @@ fn main() -> eyre::Result<()> {
     mods.iil_h_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::{spv::operand_kind as ok, iil};");
+        .raw("use crate::{spv::operand_kind as ok, iil, types};");
     mods.iil_f_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::{spv::operand_kind as ok, iil};");
+        .raw("use crate::{spv::operand_kind as ok, iil, types};");
     mods.spv().vis("pub").attr(allows);
     mods.spv_operandkind().vis("pub");
     mods.spv_instruction()
@@ -146,6 +146,7 @@ fn codegen_instructions(
                 .tuple(format!("instruction::{}", ii.name));
         });
 
+    /*
     let h_op_expr_ftb = (mods.iil_hierarchical())
         .new_impl("OpExpr")
         .impl_trait("FlattenableToBlock");
@@ -165,6 +166,7 @@ fn codegen_instructions(
             ));
         });
     h_op_expr_flatten.line("}");
+    */
 
     // FIXME need to handle the few RetUntyped ones too
     //       although can probably mostly put that off until later since they're mostly just
@@ -295,6 +297,13 @@ fn codegen_instruction<'a>(
 
     if should_generate_iil {
         let hiil_struct = mods.iil_h_instructions().new_struct(&name).vis("pub");
+        match cg_operands.ret_kind {
+            InstructionRetKind::Void => {}
+            InstructionRetKind::RetUntyped => {}
+            InstructionRetKind::RetTyped => {
+                hiil_struct.new_field("ret_type", "types::Type").vis("pub");
+            }
+        }
         for operand in &cg_operands.other_operands {
             // TODO avoid unnecissary Box when also wrapping in vec for * quantifier
             let mut op_type = match operand.raw.kind.as_ref() {
@@ -313,6 +322,7 @@ fn codegen_instruction<'a>(
         }
 
         if cg_operands.ret_kind == InstructionRetKind::RetTyped {
+            /*
             let hiil_ftb_impl = mods
                 .iil_h_instructions()
                 .new_impl(&name)
@@ -360,9 +370,17 @@ fn codegen_instruction<'a>(
             );
             hiil_ftb_flatten.line("    })");
             hiil_ftb_flatten.line("})");
+            */
         }
 
         let fiil_struct = mods.iil_f_instructions().new_struct(&name).vis("pub");
+        match cg_operands.ret_kind {
+            InstructionRetKind::Void => {}
+            InstructionRetKind::RetUntyped => {}
+            InstructionRetKind::RetTyped => {
+                fiil_struct.new_field("ret_type", "types::Type").vis("pub");
+            }
+        }
         for operand in &cg_operands.other_operands {
             // FIXME should probably just put the string of the type into our operand struct
             //       instead of doing the same work in 3 different places
