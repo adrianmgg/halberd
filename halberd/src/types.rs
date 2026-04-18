@@ -2,42 +2,102 @@ use std::fmt::{Debug, Display};
 
 use crate::util::{
     impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant,
-    impl_debug_via_display,
+    impl_debug_via_display, impl_display_enum_variants_transparent,
 };
 
 // FIXME can't currently represent boolean vectors
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Type {
-    Void,
-    Bool,
+    Concrete(Concrete),
+    Abstract(Abstract),
+    Function(Function),
+}
+impl_conversion_enum_variant!(Type::Concrete);
+impl_conversion_enum_variant!(Type::Abstract);
+
+impl_display_enum_variants_transparent!(Type { Concrete, Abstract, Function });
+impl_debug_via_display!(Type);
+
+// "Concrete Type: A numerical scalar, vector, or matrix type, or physical pointer type, or any aggregate containing only these types."
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum Concrete {
     Number(NumberKind),
     Vector(Vector),
     Matrix(Matrix),
 }
+impl_conversion_copy_deref!(Concrete);
+impl_conversion_enum_variant!(Concrete::Number(NumberKind));
+impl_conversion_enum_variant!(Concrete::Vector);
+impl_conversion_enum_variant!(Concrete::Matrix);
+impl_conversion_2_hop!(NumberKind => Concrete => Type);
+impl_conversion_2_hop!(Vector => Concrete => Type);
+impl_conversion_2_hop!(Matrix => Concrete => Type);
 
-impl Display for Type {
+impl_display_enum_variants_transparent!(Concrete { Number, Vector, Matrix });
+impl_debug_via_display!(Concrete);
+
+// "Abstract Type: An OpTypeVoid or OpTypeBool, or logical pointer type, or any aggregate type containing any of these."
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum Abstract {
+    Void(Void),
+    Bool(Bool),
+}
+impl_conversion_copy_deref!(Abstract);
+impl_display_enum_variants_transparent!(Abstract { Bool, Void });
+impl_conversion_enum_variant!(Abstract::Void);
+impl_conversion_enum_variant!(Abstract::Bool);
+impl_conversion_2_hop!(Void => Abstract => Type);
+impl_conversion_2_hop!(Bool => Abstract => Type);
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Bool;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Void;
+
+impl Display for Bool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "bool") }
+}
+
+impl Display for Void {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "void") }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct Function {
+    pub args: Vec<Type>,
+    pub result: FunctionResult,
+}
+
+impl Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Type::Void => write!(f, "void"),
-            Type::Bool => write!(f, "bool"),
-            Type::Number(number) => write!(f, "{number}"),
-            Type::Vector(vector) => write!(f, "{vector}"),
-            Type::Matrix(matrix) => write!(f, "{matrix}"),
+        write!(f, "$fn(")?;
+        for arg in &self.args {
+            write!(f, "{arg}, ")?;
         }
+        write!(f, "): {}", self.result)
     }
 }
-impl_debug_via_display!(Type);
 
-impl_conversion_enum_variant!(Type::Number(NumberKind));
-impl_conversion_enum_variant!(Type::Vector);
-impl_conversion_enum_variant!(Type::Matrix);
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum FunctionResult {
+    Concrete(Concrete),
+    Abstract(Abstract),
+}
+impl_conversion_enum_variant!(FunctionResult::Concrete);
+impl_conversion_enum_variant!(FunctionResult::Abstract);
+
+impl_display_enum_variants_transparent!(FunctionResult { Concrete, Abstract });
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum NumberKind {
     Integer(Integer),
     Float(Float),
 }
+impl_conversion_enum_variant!(NumberKind::Float);
+impl_conversion_enum_variant!(NumberKind::Integer);
+impl_conversion_copy_deref!(NumberKind);
 
 impl Display for NumberKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -49,8 +109,6 @@ impl Display for NumberKind {
 }
 impl_debug_via_display!(NumberKind);
 
-impl_conversion_enum_variant!(NumberKind::Float);
-impl_conversion_enum_variant!(NumberKind::Integer);
 impl_conversion_2_hop!(Integer => NumberKind => Type);
 impl_conversion_2_hop!(Float => NumberKind => Type);
 impl_conversion_copy_deref!(Integer);
@@ -132,17 +190,21 @@ impl_debug_via_display!(Matrix);
 
 macro_rules! mk_option_helper_exts {
     (
+        $life:lifetime ;
         $(
             $extname:ident ($ext_target:ty) {
                 $( $method:ident $(( $($arg:ident : $argty:ty),* ))? -> $result:ty = $self:pat => { $($body:tt)* } )*
+                $(($target2:ty) {
+                    $( $method2:ident $(( $($arg2:ident : $argty2:ty),* ))? -> $result2:ty = $self2:pat => { $($body2:tt)* } )*
+                })*
             };
         )*
     ) => {
         $(
-            pub trait $extname: Sized {
+            pub trait $extname<$life>: Sized {
                 $( fn $method(self $( $( , $arg: $argty )* )?) -> Option<$result> ; )*
             }
-            impl $extname for Option<$ext_target> {
+            impl<$life> $extname<$life> for Option<$ext_target> {
                 $( fn $method(self $( $( , $arg: $argty )* )?) -> Option<$result> {
                     match self {
                         Some($self) => { $($body)* }
@@ -150,13 +212,20 @@ macro_rules! mk_option_helper_exts {
                     }
                 } )*
             }
-            impl $extname for $ext_target {
+            impl<$life> $extname<$life> for $ext_target {
                 $( fn $method(self $($(, $arg: $argty)*)?) -> Option<$result> {
                     match self {
                         $self => { $($body)* }
                     }
                 } )*
             }
+            $( impl<$life> $extname<$life> for $target2 {
+                $( fn $method2(self $($(, $arg2: $argty2)*)?) -> Option<$result2> {
+                    match self {
+                        $self2 => { $($body2)* }
+                    }
+                } )*
+            } )*
         )*
     };
 }
@@ -165,25 +234,29 @@ pub mod prelude {
     use super::*;
     use crate::util::matches_opt;
 
-    mk_option_helper_exts! {
-        ExtTwoTypes((Type, Type)) {
-            and_is_homogeneous -> Type = (lhs, rhs) => { (lhs == rhs).then_some(lhs) }
+    mk_option_helper_exts! { 'a;
+        ExtTwoTypes((&'a Type, &'a Type)) {
+            and_is_homogeneous -> &'a Type = (t1, t2) => { (t1 == t2).then_some(t1) }
         };
-        ExtAnyType(Type) {
-            and_is_vector -> Vector = t => { matches_opt!(t, Type::Vector(v) => v) }
-            and_is_matrix -> Matrix = t => { matches_opt!(t, Type::Matrix(m) => m) }
+        ExtAnyType(&'a Type) {
+            and_is_vector -> &'a Vector = t => { matches_opt!(t, Type::Concrete(Concrete::Vector(v)) => v) }
+            and_is_matrix -> &'a Matrix = t => { matches_opt!(t, Type::Concrete(Concrete::Matrix(m)) => m) }
+            (&'a Option<Type>) {
+                and_is_vector -> &'a Vector = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Vector(v))) => v) }
+                and_is_matrix -> &'a Matrix = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Matrix(m))) => m) }
+            }
         };
-        ExtVector(Vector) {
+        ExtVector(&'a Vector) {
             // FIXME naming for `and_to_component_type`
-            and_to_component_type -> NumberKind = v => { Some(v.component_type) }
-            and_has_n_components(n: u32) -> Vector = v => { (v.component_count == n).then_some(v) }
+            and_to_component_type -> &'a NumberKind = v => { Some(&v.component_type) }
+            and_has_n_components(n: u32) -> &'a Vector = v => { (v.component_count == n).then_some(v) }
         };
-        ExtMatrix(Matrix) {
+        ExtMatrix(&'a Matrix) {
             to_component_type -> NumberKind = m => { Some(m.column_type.component_type) }
         };
-        ExtNumberKind(NumberKind) {
-            and_is_float -> Float = n => { matches_opt!(n, NumberKind::Float(f) => f) }
-            and_is_int -> Integer = n => { matches_opt!(n, NumberKind::Integer(i) => i) }
+        ExtNumberKind(&'a NumberKind) {
+            and_is_float -> &'a Float = n => { matches_opt!(n, NumberKind::Float(f) => f) }
+            and_is_int -> &'a Integer = n => { matches_opt!(n, NumberKind::Integer(i) => i) }
         };
     }
 }

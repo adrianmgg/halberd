@@ -70,3 +70,17 @@ macro_rules! matches_opt {
     };
 }
 pub(crate) use matches_opt;
+
+/// make a [Display] implementation by directly calling thru to an enum's variants' [Display] impls
+macro_rules! impl_display_enum_variants_transparent {
+    ($enum:ty { $($variant:ident),* }) => {
+        impl ::std::fmt::Display for $enum {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                match self {
+                    $(Self::$variant(x) => ::std::fmt::Display::fmt(x, f)),*
+                }
+            }
+        }
+    };
+}
+pub(crate) use impl_display_enum_variants_transparent;

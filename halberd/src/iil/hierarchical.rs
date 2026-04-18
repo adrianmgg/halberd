@@ -43,4 +43,10 @@ pub type Block = block::Block<BlockLocalVoid, BlockLocalExpr, BlockTerminal>;
 
 pub mod instruction {
     pub use crate::generated::iil::hierarchical::instruction::*;
+    use crate::spv::operand_kind;
+
+    pub struct OpFunction {
+        pub control: enumset::EnumSet<operand_kind::FunctionControl>,
+        pub body: Vec<super::OpOrBlock>,
+    }
 }

@@ -1,7 +1,9 @@
 use super::PhaseFullyTyped;
 use crate::{
     ast::{self, Sidecars},
-    iil, scope, spv, types,
+    iil, scope,
+    spv::operand_kind as ok,
+    types,
 };
 
 fn foo<'a>(
@@ -9,7 +11,7 @@ fn foo<'a>(
     universe: scope::Universe<<PhaseFullyTyped as Sidecars>::ScopeItem>,
 ) -> iil::h::instruction::OpFunction {
     iil::h::instruction::OpFunction {
-        op0: spv::operand_kind::FunctionControl::None,
+        control: ok::FunctionControl::None,
         op1: types::Type::Function,
     }
 }
