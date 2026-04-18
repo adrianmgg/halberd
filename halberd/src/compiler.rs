@@ -12,38 +12,40 @@ pub(crate) use sidecars::ExprSidecar;
 use sidecars::{ExprSidecarS, ExprSidecarT};
 
 /// nothing
-pub(crate) struct NoSidecars;
-impl Sidecars for NoSidecars {
+pub(crate) struct PhaseInitial;
+impl Sidecars for PhaseInitial {
     type Expr = ExprSidecar<(), ()>;
     type Func = ();
+    type ScopeItem = ();
 }
 /// some scopes
 pub(crate) struct PhasePartiallyScoped;
 impl Sidecars for PhasePartiallyScoped {
     type Expr = ExprSidecar<Option<ScopeId>, ()>;
     type Func = Option<ScopeId>;
+    type ScopeItem = ();
 }
 /// just scope
 pub(crate) struct PhaseFullyScoped;
 impl Sidecars for PhaseFullyScoped {
     type Expr = ExprSidecar<ScopeId, ()>;
     type Func = ScopeId;
+    type ScopeItem = ();
 }
 /// scope, and some types
 pub(crate) struct PhasePartiallyTyped;
 impl Sidecars for PhasePartiallyTyped {
     type Expr = ExprSidecar<ScopeId, Option<types::Type>>;
     type Func = ScopeId;
+    type ScopeItem = NamespaceItemPartiallyTyped;
 }
 /// scope and fully typed
 pub(crate) struct PhaseFullyTyped;
 impl Sidecars for PhaseFullyTyped {
     type Expr = ExprSidecar<ScopeId, types::Type>;
     type Func = ScopeId;
+    type ScopeItem = NamespaceItemFullyTyped;
 }
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct NamespaceItemNothing;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct NamespaceItemPartiallyTyped {
@@ -56,7 +58,7 @@ pub(crate) struct NamespaceItemFullyTyped {
 }
 
 pub fn compile<'a>(
-    e: ast::File<'a, NoSidecars>,
+    e: ast::File<'a, PhaseInitial>,
 ) -> Result<
     (
         ast::File<'a, PhaseFullyTyped>,
@@ -70,6 +72,12 @@ pub fn compile<'a>(
     let (e, universe) = typing_phase::populate_types(e, universe)?;
 
     Ok((e, universe))
+}
+
+pub fn foobar<'a>(
+    file: ast::File<'a, PhaseFullyTyped>,
+    universe: scope::Universe<NamespaceItemFullyTyped>,
+) {
 }
 
 #[cfg(test)]
