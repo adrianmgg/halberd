@@ -7,6 +7,7 @@ use crate::ast::{Block, Expr, ExprData, File, Function, FunctionData};
 pub(crate) trait Sidecars {
     type Expr: std::fmt::Debug + Clone + PartialEq;
     type Func: std::fmt::Debug + Clone + PartialEq;
+    type ScopeItem;
 }
 
 #[derive(Clone, Copy)]

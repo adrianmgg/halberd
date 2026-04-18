@@ -8,20 +8,20 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 pub(crate) use sidecar::*;
 
-use crate::{compiler::NoSidecars, types};
+use crate::{compiler::PhaseInitial, types};
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
-pub(crate) struct Expr<'a, S: Sidecars = NoSidecars> {
+pub(crate) struct Expr<'a, S: Sidecars = PhaseInitial> {
     pub data: ExprData<'a, S>,
     pub sidecar: S::Expr,
 }
 
-impl<'a> From<ExprData<'a, NoSidecars>> for Expr<'a, NoSidecars> {
-    fn from(data: ExprData<'a, NoSidecars>) -> Self { Expr { data, sidecar: Default::default() } }
+impl<'a> From<ExprData<'a, PhaseInitial>> for Expr<'a, PhaseInitial> {
+    fn from(data: ExprData<'a, PhaseInitial>) -> Self { Expr { data, sidecar: Default::default() } }
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
-pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
+pub(crate) enum ExprData<'a, S: Sidecars = PhaseInitial> {
     LiteralInt(Spanned<LiteralInt>),
     LiteralFloat(Spanned<LiteralFloat>),
     LiteralBool(Spanned<bool>),
@@ -66,7 +66,7 @@ pub(crate) struct LiteralFloat {
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
-pub(crate) struct Block<'a, S: Sidecars = NoSidecars> {
+pub(crate) struct Block<'a, S: Sidecars = PhaseInitial> {
     pub(crate) exprs: Vec<Expr<'a, S>>,
     pub(crate) last: Option<Box<Expr<'a, S>>>,
 }
@@ -83,13 +83,13 @@ pub(crate) enum InfixOp {
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
-pub(crate) struct Function<'a, S: Sidecars = NoSidecars> {
+pub(crate) struct Function<'a, S: Sidecars = PhaseInitial> {
     pub data: FunctionData<'a, S>,
     pub sidecar: S::Func,
 }
 
-impl<'a> From<FunctionData<'a, NoSidecars>> for Function<'a, NoSidecars> {
-    fn from(data: FunctionData<'a, NoSidecars>) -> Self {
+impl<'a> From<FunctionData<'a, PhaseInitial>> for Function<'a, PhaseInitial> {
+    fn from(data: FunctionData<'a, PhaseInitial>) -> Self {
         Function { data, sidecar: Default::default() }
     }
 }
@@ -99,7 +99,7 @@ impl<'a, S: Sidecars> Function<'a, S> {
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
-pub(crate) struct FunctionData<'a, S: Sidecars = NoSidecars> {
+pub(crate) struct FunctionData<'a, S: Sidecars = PhaseInitial> {
     pub(crate) name: Spanned<Cow<'a, str>>,
     pub(crate) return_type: Spanned<types::Type>,
     pub(crate) args: Vec<FunctionArg<'a>>,
@@ -119,7 +119,7 @@ pub(crate) struct FunctionArg<'a> {
 
 #[derive_where(Debug; S::Expr, S::Func)]
 #[derive_where(Default;)]
-pub(crate) struct File<'a, S: Sidecars = NoSidecars> {
+pub(crate) struct File<'a, S: Sidecars = PhaseInitial> {
     pub(crate) functions: HashMap<Cow<'a, str>, Vec<Function<'a, S>>>,
 }
 

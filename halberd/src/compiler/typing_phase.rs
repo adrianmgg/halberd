@@ -1,6 +1,6 @@
 use super::{
-    NamespaceItemFullyTyped, NamespaceItemNothing, NamespaceItemPartiallyTyped, PhaseFullyScoped,
-    PhaseFullyTyped, PhasePartiallyTyped,
+    NamespaceItemFullyTyped, NamespaceItemPartiallyTyped, PhaseFullyScoped, PhaseFullyTyped,
+    PhasePartiallyTyped,
 };
 use crate::{
     ast::{self, SidecarFns, Sidecarred as _, Sidecars},
@@ -14,7 +14,7 @@ use crate::{
 
 pub(crate) fn populate_types<'a>(
     e: ast::File<'a, PhaseFullyScoped>,
-    universe: scope::Universe<NamespaceItemNothing>,
+    universe: scope::Universe<<PhaseFullyScoped as Sidecars>::ScopeItem>,
 ) -> Result<
     (
         ast::File<'a, PhaseFullyTyped>,

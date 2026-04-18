@@ -1,17 +1,20 @@
-use super::{NamespaceItemNothing, PhaseFullyScoped, PhasePartiallyScoped};
+use super::{PhaseFullyScoped, PhasePartiallyScoped};
 use crate::{
-    ast::{self, SidecarFns, SidecarWalkContexts, Sidecarred},
-    compiler::sidecars::{ExprSidecar, ExprSidecarS},
+    ast::{self, SidecarFns, SidecarWalkContexts, Sidecarred, Sidecars},
+    compiler::{
+        PhaseInitial,
+        sidecars::{ExprSidecar, ExprSidecarS},
+    },
     scope::{self, ScopeId},
 };
 
 pub(super) fn populate_scopes<'a>(
-    e: ast::File<'a>,
-    mut universe: scope::Universe<NamespaceItemNothing>,
+    e: ast::File<'a, PhaseInitial>,
+    mut universe: scope::Universe<<PhaseInitial as Sidecars>::ScopeItem>,
 ) -> Result<
     (
         ast::File<'a, PhaseFullyScoped>,
-        scope::Universe<NamespaceItemNothing>,
+        scope::Universe<<PhaseFullyScoped as Sidecars>::ScopeItem>,
     ),
     Vec<ariadne::Report<'a>>,
 > {
@@ -36,7 +39,7 @@ pub(super) fn populate_scopes<'a>(
                 for arg in data.args.iter() {
                     universe
                         .get_scope_mut(new_scope)
-                        .insert(arg.name.inner.clone(), NamespaceItemNothing);
+                        .insert(arg.name.inner.clone(), Default::default());
                 }
                 *scope = Some(new_scope);
                 (true, new_scope)
