@@ -1,15 +1,23 @@
-use crate::iil::{self, block};
+use crate::{
+    iil::{self, block},
+    util::impl_conversion_enum_variant,
+};
 
 pub trait FlattenableToBlock {
     fn flatten(self, ctx: &mut block::Ctx) -> crate::iil::h::Block;
 }
 
-/// all H-IIL instructions
-pub trait Op {
-    fn flatten(self, ctx: &mut block::Ctx) -> Block;
-}
-
 pub use crate::generated::iil::hierarchical::{OpExpr, OpVoid};
+
+// FIXME remove this if don't end up using it
+pub enum OpOrBlock {
+    Expr(OpExpr),
+    Void(OpVoid),
+    Block(Block),
+}
+impl_conversion_enum_variant!(OpOrBlock::Expr(OpExpr));
+impl_conversion_enum_variant!(OpOrBlock::Void(OpVoid));
+impl_conversion_enum_variant!(OpOrBlock::Block(Block));
 
 pub enum Expr {
     Op(OpExpr),

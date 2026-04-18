@@ -1,3 +1,13 @@
+/// ```rust
+/// struct Foo;
+/// struct Abcd;
+/// enum Bar {
+///     Foo(Foo),
+///     Qux(Abcd),
+/// }
+/// impl_conversion_enum_variant!(Bar::Foo);
+/// impl_conversion_enum_variant!(Bar::Qux(Abcd));
+/// ```
 macro_rules! impl_conversion_enum_variant {
     ($outer:ident:: $inner:ident) => {
         $crate::util::impl_conversion_enum_variant! {$outer :: $inner ( $inner )}

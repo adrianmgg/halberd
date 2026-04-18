@@ -4,6 +4,7 @@ use crate::{
     types::{self, prelude::*},
 };
 
+mod iilifying_phase;
 mod scoping_phase;
 mod sidecars;
 mod typing_phase;
@@ -72,12 +73,6 @@ pub fn compile<'a>(
     let (e, universe) = typing_phase::populate_types(e, universe)?;
 
     Ok((e, universe))
-}
-
-pub fn foobar<'a>(
-    file: ast::File<'a, PhaseFullyTyped>,
-    universe: scope::Universe<NamespaceItemFullyTyped>,
-) {
 }
 
 #[cfg(test)]

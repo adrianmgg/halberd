@@ -51,11 +51,11 @@ fn main() -> eyre::Result<()> {
     mods.spv_operandkind()
         .scope()
         .raw("use crate::spv::operand_kind::*;");
-    for operand_kind in grammar.operand_kinds {
+    for operand_kind in &grammar.operand_kinds {
         codegen_operand_kind(&mut mods, operand_kind);
     }
 
-    codegen_instructions(&mut mods, grammar.instructions.as_slice());
+    codegen_instructions(&grammar, &mut mods, grammar.instructions.as_slice());
 
     std::fs::write(&out_file, mods.root().to_string())
         .wrap_err_with(|| eyre!("failed to write generated code to {out_file:?}"))?;
@@ -115,11 +115,16 @@ struct CodegenOperand<'a> {
     raw: &'a spv_grammar::Operand,
     name: String,
     is_expr: bool,
+    is_bitenum: bool,
 }
 
-fn codegen_instructions(mods: &mut Modules, instructions: &[spv_grammar::Instruction]) {
+fn codegen_instructions(
+    grammar: &spv_grammar::Grammar,
+    mods: &mut Modules,
+    instructions: &[spv_grammar::Instruction],
+) {
     let instruction_infos: Vec<_> = (instructions.iter())
-        .map(|i| codegen_instruction(mods, i))
+        .map(|i| codegen_instruction(grammar, mods, i))
         .collect();
 
     let h_op_expr = (mods.iil_hierarchical()).new_enum("OpExpr").vis("pub");
@@ -186,6 +191,7 @@ fn codegen_instructions(mods: &mut Modules, instructions: &[spv_grammar::Instruc
 }
 
 fn codegen_instruction<'a>(
+    grammar: &spv_grammar::Grammar,
     mods: &mut Modules,
     instruction: &'a spv_grammar::Instruction,
 ) -> CodegennedInstructionInfo<'a> {
@@ -219,6 +225,7 @@ fn codegen_instruction<'a>(
                     raw: o,
                     name: format!("op{idx}"),
                     is_expr: matches!(o.kind.as_ref(), "IdRef"),
+                    is_bitenum: grammar.operand_kinds.iter().any(|ok| matches!(ok, spv_grammar::OperandKind::BitEnum { kind, .. } if kind == &o.kind)),
                 })
                 .collect();
             CodegenOperands { ret_kind, other_operands }
@@ -245,6 +252,9 @@ fn codegen_instruction<'a>(
     }
     for operand in &cg_operands.other_operands {
         let mut op_type = format!("ok::{}", ensure_valid_ident(&operand.raw.kind));
+        if operand.is_bitenum {
+            op_type = format!("::enumset::EnumSet<{op_type}>");
+        }
         match operand.raw.quantifier {
             Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
             Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
@@ -290,6 +300,9 @@ fn codegen_instruction<'a>(
                 "IdRef" => "Box<iil::h::Expr>".into(),
                 other => format!("ok::{other}"),
             };
+            if operand.is_bitenum {
+                op_type = format!("::enumset::EnumSet<{op_type}>");
+            }
             match operand.raw.quantifier {
                 Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
                 Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
@@ -350,10 +363,15 @@ fn codegen_instruction<'a>(
 
         let fiil_struct = mods.iil_f_instructions().new_struct(&name).vis("pub");
         for operand in &cg_operands.other_operands {
+            // FIXME should probably just put the string of the type into our operand struct
+            //       instead of doing the same work in 3 different places
             let mut op_type = match operand.is_expr {
                 true => "iil::block::BlockLocalRef".into(),
                 false => format!("ok::{}", operand.raw.kind),
             };
+            if operand.is_bitenum {
+                op_type = format!("::enumset::EnumSet<{op_type}>");
+            }
             match operand.raw.quantifier {
                 Some(spv_grammar::Quantifier::ZeroOrOne) => op_type = format!("Option<{op_type}>"),
                 Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
@@ -370,12 +388,12 @@ fn codegen_instruction<'a>(
     }
 }
 
-fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKind) {
+fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandKind) {
     let r#mod = Modules::spv_operandkind;
     match operand_kind {
         // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
         spv_grammar::OperandKind::BitEnum { kind, enumerants } => {
-            let name = ensure_valid_ident(&kind);
+            let name = ensure_valid_ident(kind);
             let e = r#mod(mods)
                 .new_enum(&name)
                 .vis("pub")
@@ -384,7 +402,7 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKi
                 .derive("::enumset::EnumSetType")
                 .r#macro(r##"#[enumset(repr = "u32", map = "mask")]"##);
             let mut zero = None;
-            for enumerant in &enumerants {
+            for enumerant in enumerants {
                 if enumerant.value == 0 {
                     zero = Some(enumerant);
                 } else {
@@ -403,7 +421,7 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKi
             // FIXME needs capabilities
         }
         spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
-            let name = ensure_valid_ident(&kind);
+            let name = ensure_valid_ident(kind);
             let e = r#mod(mods).new_enum(&name).vis("pub");
             match kind.as_ref() {
                 "Capability" => {
@@ -416,7 +434,7 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKi
                     e.repr("u32").derive("Debug").derive("Copy").derive("Clone");
                 }
             }
-            for enumerant in &enumerants {
+            for enumerant in enumerants {
                 // FIXME need to use version,capabilities
                 // TODO should use aliases
                 e.new_variant(ensure_valid_ident(&enumerant.enumerant))
@@ -454,9 +472,9 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKi
             // "For an operand kind belonging to this category, its value is an <id> definition or reference."
             // - SPIR-V Machine-readable Grammar, 3.2
             r#mod(mods)
-                .new_struct(ensure_valid_ident(&kind))
+                .new_struct(ensure_valid_ident(kind))
                 .vis("pub")
-                .doc(clean_doc(&doc))
+                .doc(clean_doc(doc))
                 .derive("Debug")
                 .tuple_field("pub u32");
         }
@@ -467,10 +485,10 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: spv_grammar::OperandKi
         spv_grammar::OperandKind::Composite { kind, bases } => {
             // TODO should maybe just be a type alias to a tuple?
             let t = r#mod(mods)
-                .new_struct(ensure_valid_ident(&kind))
+                .new_struct(ensure_valid_ident(kind))
                 .vis("pub")
                 .derive("Debug");
-            for base in &bases {
+            for base in bases {
                 t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
             }
         }
