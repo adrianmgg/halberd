@@ -27,7 +27,11 @@ pub(crate) enum ExprData<'a, S: Sidecars = NoSidecars> {
     LiteralBool(Spanned<bool>),
     InfixOp(Box<Expr<'a, S>>, Spanned<InfixOp>, Box<Expr<'a, S>>),
     Var(Spanned<&'a str>),
-    Declaration { name: Spanned<&'a str>, value: Box<Expr<'a, S>> },
+    Declaration {
+        name: Spanned<&'a str>,
+        r#type: Spanned<types::Type>,
+        value: Box<Expr<'a, S>>,
+    },
     Block(Spanned<Block<'a, S>>),
 }
 
@@ -44,7 +48,7 @@ impl<'a, S: Sidecars> ExprData<'a, S> {
             | ExprData::Var(Spanned { span, .. })
             | ExprData::Block(Spanned { span, .. })
             | ExprData::InfixOp(_, Spanned { span, .. }, _)
-            | ExprData::Declaration { name: Spanned { span, .. }, value: _ } => *span,
+            | ExprData::Declaration { name: Spanned { span, .. }, r#type: _, value: _ } => *span,
         }
     }
 }
