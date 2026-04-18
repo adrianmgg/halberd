@@ -44,7 +44,7 @@ pub enum BlockLocalExpr {
 impl_conversion_enum_variant!(BlockLocalExpr::{Op(iil::flat::OpExpr), Block(Box<Block>), Constant(Constant)});
 
 pub type BlockTerminal = super::flat::OpExpr;
-pub type Block = block::Block<BlockLocalVoid, BlockLocalExpr, BlockTerminal>;
+pub type Block = block::Block<BlockLocalVoid, BlockLocalExpr, Option<BlockTerminal>>;
 
 pub mod instruction {
     pub use crate::generated::iil::hierarchical::instruction::*;

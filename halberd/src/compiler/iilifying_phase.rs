@@ -68,7 +68,10 @@ fn push_expr_to_block<'a>(
                     for ast_expr in ast_block.exprs.into_iter() {
                         push_expr_to_block(ast_expr, universe, b, ctx);
                     }
-                    todo!()
+                    ast_block
+                        .last
+                        .and_then(|terminal| push_expr_to_block(*terminal, universe, b, ctx))
+                        .and_then(|terminal_ref| terminal_ref.into())
                 }))
                 .into(),
             ),
@@ -77,6 +80,7 @@ fn push_expr_to_block<'a>(
             // add the OpVariable instruction declaring our var
             let var_br = blockbuilder.push_valued_local(
                 f::OpExpr::OpVariable(fops::OpVariable {
+                    ret_type: r#type.inner,
                     op0: ok::StorageClass::Function,
                     op1: None,
                 })
