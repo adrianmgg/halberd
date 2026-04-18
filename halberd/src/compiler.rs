@@ -343,3 +343,29 @@ fn infer_expr_type<'a>(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{assert_matches, path::PathBuf};
+
+    use rstest::rstest;
+
+    #[rstest]
+    fn file_parses(#[files("testresources/valid/**/*.hbd")] path: PathBuf) {
+        use chumsky::Parser as _;
+
+        use crate::parser::tokens_to_parser_input;
+
+        let src = std::fs::read_to_string(&path).unwrap();
+        let tokens = crate::lexer::lexer()
+            .parse(&src)
+            .into_result()
+            .expect("input should lex successfully");
+        let input = tokens_to_parser_input(&src, &tokens[..]);
+        let file = crate::parser::file()
+            .parse(input)
+            .into_result()
+            .expect("input should parse successfully");
+        assert_matches!(super::compile(file), Ok(_));
+    }
+}

@@ -229,6 +229,13 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
     })
 }
 
+pub fn tokens_to_parser_input<'tokens, 'src: 'tokens>(
+    src: &'src str,
+    tokens: &'tokens [Spanned<Token<'src>>],
+) -> ParserInput<'tokens, 'src> {
+    tokens[..].split_spanned((0..src.len()).into())
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -236,13 +243,6 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-
-    fn tokens_to_parser_input<'tokens, 'src: 'tokens>(
-        src: &'src str,
-        tokens: &'tokens [Spanned<Token<'src>>],
-    ) -> ParserInput<'tokens, 'src> {
-        tokens[..].split_spanned((0..src.len()).into())
-    }
 
     #[rstest]
     #[case::int_literal("1u32")]
