@@ -158,15 +158,20 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
         ))
         .boxed();
 
-        // FIXME
         let block = expr
             .clone()
             .separated_by(just(Symbol::Semicolon))
             .collect()
-            .then_ignore(just(Symbol::Semicolon))
-            .then(expr_boxed.clone().or_not())
+            .then(just(Symbol::Semicolon).or_not())
             .nested_in(braces())
-            .map(|(exprs, last)| ast::Block { exprs, last })
+            .map(|(mut exprs, semicolon)| {
+                if semicolon.is_some() {
+                    ast::Block { exprs, last: None }
+                } else {
+                    let last = exprs.pop().map(Box::new);
+                    ast::Block { exprs, last }
+                }
+            })
             .spanned()
             .map(|block| Expr::from(ExprData::Block(block)))
             .boxed();
