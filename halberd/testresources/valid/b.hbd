@@ -1,0 +1,6 @@
+$fn foo(a: r32, b: r32, c: r32): r32 = ({
+	let x: r32 = a + b;
+	let y: r32 = b + c;
+	let z: r32 = x + y;
+	z
+})
