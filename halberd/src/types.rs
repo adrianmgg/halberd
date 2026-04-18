@@ -63,7 +63,7 @@ impl Display for Void {
 #[derive(Clone, Eq, PartialEq)]
 pub struct Function {
     pub args: Vec<Type>,
-    pub result: FunctionResult,
+    pub result: Box<Type>,
 }
 
 impl Display for Function {
@@ -93,14 +93,7 @@ pub enum NumberKind {
 impl_conversion_enum_variant!(NumberKind::{Float, Integer});
 impl_conversion_copy_deref!(NumberKind);
 
-impl Display for NumberKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NumberKind::Integer(integer) => write!(f, "{integer}"),
-            NumberKind::Float(float) => write!(f, "{float}"),
-        }
-    }
-}
+impl_display_enum_variants_transparent!(NumberKind { Integer, Float });
 impl_debug_via_display!(NumberKind);
 
 impl_conversion_2_hop!(Integer => NumberKind => Type);

@@ -7,20 +7,40 @@ pub trait Instruction: HasCapabilities {
 }
 
 pub mod operand_kind {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+
     pub use crate::generated::spv::operand_kind::*;
+    use crate::util::{impl_conversion_2_hop, impl_conversion_enum_variant};
+
+    #[derive(Debug)]
+    pub struct LiteralInteger {
+        value: BigInt,
+    }
+    impl From<BigInt> for LiteralInteger {
+        fn from(value: BigInt) -> Self { Self { value } }
+    }
+
+    #[derive(Debug)]
+    pub struct LiteralFloat {
+        value: BigRational,
+    }
+    impl From<BigRational> for LiteralFloat {
+        fn from(value: BigRational) -> Self { Self { value } }
+    }
+
+    #[derive(Debug)]
+    pub enum LiteralContextDependentNumber {
+        Integer(LiteralInteger),
+        Float(LiteralFloat),
+    }
+    impl_conversion_enum_variant!(LiteralContextDependentNumber::{Integer(LiteralInteger), Float(LiteralFloat)});
+    impl_conversion_2_hop!(BigInt => LiteralInteger => LiteralContextDependentNumber);
+    impl_conversion_2_hop!(BigRational => LiteralFloat => LiteralContextDependentNumber);
 
     /// TODO
     #[derive(Debug)]
-    pub struct LiteralInteger;
-    /// TODO
-    #[derive(Debug)]
     pub struct LiteralString;
-    /// TODO
-    #[derive(Debug)]
-    pub struct LiteralFloat;
-    /// TODO
-    #[derive(Debug)]
-    pub struct LiteralContextDependentNumber;
     /// TODO
     #[derive(Debug)]
     pub struct LiteralExtInstInteger;
