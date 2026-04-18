@@ -1,3 +1,6 @@
+// FIXME need to disambiguate the naming between
+//       sidecars (the AST's implementation of the sidecars system)
+//       sidecars (the compiler's sidecar types for use with that system)
 use std::{
     fmt::{self, Debug},
     marker::PhantomData,
