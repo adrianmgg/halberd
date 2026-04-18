@@ -355,35 +355,31 @@ mod test_lex {
     lex_test_single!(
         type_u32,
         "u32",
-        Token::Type(types::Type::Number(types::NumberKind::Integer(
-            types::Integer::Unsigned(32)
-        )))
+        Token::Type(t) if *t == types::Integer::Unsigned(32).into()
     );
     lex_test_single!(
         type_r64,
         "r64",
-        Token::Type(types::Type::Number(types::NumberKind::Float(
-            types::Float { width: 64 }
-        )))
+        Token::Type(t) if *t == types::Float { width: 64 }.into()
     );
     lex_test_single!(
         type_vec,
         "i32v99",
-        Token::Type(types::Type::Vector(types::Vector {
+        Token::Type(t) if *t == types::Vector {
             component_type: types::NumberKind::Integer(types::Integer::Signed(32)),
             component_count: 99,
-        }))
+        }.into()
     );
     lex_test_single!(
         type_mat,
         "r32m12x34",
-        Token::Type(types::Type::Matrix(types::Matrix {
+        Token::Type(t) if *t == types::Matrix {
             column_type: types::Vector {
                 component_type: types::NumberKind::Float(types::Float { width: 32 }),
                 component_count: 12,
             },
             column_count: 34,
-        }))
+        }.into()
     );
 }
 

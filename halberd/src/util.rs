@@ -9,10 +9,15 @@
 /// impl_conversion_enum_variant!(Bar::Qux(Abcd));
 /// ```
 macro_rules! impl_conversion_enum_variant {
-    ($outer:ident:: $inner:ident) => {
-        $crate::util::impl_conversion_enum_variant! {$outer :: $inner ( $inner )}
+    // sugar for multiple on the same outer
+    ($outer:ident :: {$($variant:ident $(($inner:ident))?),*}) => {
+        $( $crate::util::impl_conversion_enum_variant!{ $outer :: $variant $(( $inner ))? } )*
     };
-    ($outer:ident:: $variant:ident($inner:ident)) => {
+    // sugar for variant and inner struct with same name
+    ($outer:ident :: $inner:ident) => {
+        $crate::util::impl_conversion_enum_variant!{ $outer :: $inner ( $inner ) }
+    };
+    ($outer:ident :: $variant:ident($inner:ident)) => {
         impl From<$inner> for $outer {
             fn from(x: $inner) -> $outer { $outer::$variant(x) }
         }
