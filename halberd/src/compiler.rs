@@ -130,6 +130,18 @@ fn populate_types<'a>(
                sidecar: &mut <PhasePartiallyTyped as Sidecars>::Expr,
                _| {
             let scope = sidecar.scope();
+            // FIXME need a check for assignment and declaration assignment to have types that
+            //       line up
+            if let ast::ExprData::Declaration { name, r#type, value } = data {
+                let name = name.inner;
+                let r#type = r#type.inner;
+                assert!(
+                    universe
+                        .get_scope_mut(scope)
+                        .lookup_and_modify(name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
+                            Some(r#type))
+                );
+            }
             match sidecar.type_mut() {
                 Some(_) => (false, ()),
                 sidecar_type @ None => {
@@ -138,13 +150,6 @@ fn populate_types<'a>(
                         None => (false, ()),
                         Some(r#type) => {
                             *sidecar_type = Some(r#type);
-                            // if we just figured out the type of a variable, set that in the scope
-                            if let ast::ExprData::Declaration { name, value } = data {
-                                assert!(universe.get_scope_mut(sidecar.scope()).lookup_and_modify(
-                                    name.inner,
-                                    |i: &mut NamespaceItemPartiallyTyped| i.r#type = Some(r#type)
-                                ));
-                            }
                             (true, ())
                         }
                     }
@@ -234,7 +239,7 @@ fn populate_scopes<'a>(
                         // blocks get a new scope
                         ast::ExprData::Block(..) =>
                             universe.get_scope_mut(super_scope).new_subscope(),
-                        ast::ExprData::Declaration { name, value } => {
+                        ast::ExprData::Declaration { name, r#type: _, value: _ } => {
                             let new_scope = universe.get_scope_mut(super_scope).new_subscope();
                             universe
                                 .get_scope_mut(new_scope)
@@ -329,9 +334,7 @@ fn infer_expr_type<'a>(
             .get_scope(scope)
             .lookup(name)
             .and_then(|i| i.r#type),
-        // FIXME declaration AST should really have type annotation in it...
-        // FIXME also declarations should maybe be Void typed actually
-        ast::ExprData::Declaration { name: _, value } => value.sidecar.r#type(),
+        ast::ExprData::Declaration { name: _, r#type: _, value: _ } => Some(types::Type::Void),
         ast::ExprData::Block(spanned) => match &spanned.inner.last {
             // blocks with no terminal expression get the type void
             None => Some(types::Type::Void),

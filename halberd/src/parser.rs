@@ -149,9 +149,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             // let name = ...
             just(Keyword::Let)
                 .ignore_then(ident_spanned)
+                .then(just(Symbol::Colon).ignore_then(r#type()))
                 .then_ignore(just(Symbol::Equals))
                 .then(expr_boxed.clone())
-                .map(|(name, value)| ExprData::Declaration { name, value })
+                .map(|((name, r#type), value)| ExprData::Declaration { name, r#type, value })
                 .map(Expr::from),
             // numbers
             atom_number,
@@ -250,6 +251,7 @@ mod tests {
     #[case::variable_reference("foo")]
     #[case::block_without_terminal("{foo; bar; baz;}")]
     #[case::block_with_terminal("{foo; bar; baz}")]
+    #[case::declaration("let foo: u32 = 1u32")]
     fn test_expr_parses(#[case] src: &'_ str) {
         let tokens = crate::lexer::lexer()
             .parse(src)

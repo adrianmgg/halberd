@@ -74,6 +74,7 @@ impl Display for Symbol {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Keyword {
+    // FIXME either remove or stop using $fn
     Function,
     Let,
     If,

@@ -159,8 +159,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     Box::new(rhs.map_sidecars(fns)),
                 ),
                 ExprData::Var(v) => ExprData::Var(v),
-                ExprData::Declaration { name, value } =>
-                    ExprData::Declaration { name, value: Box::new(value.map_sidecars(fns)) },
+                ExprData::Declaration { name, r#type, value } =>
+                    ExprData::Declaration { name, r#type, value: Box::new(value.map_sidecars(fns)) },
                 ExprData::Block(Spanned { inner: Block { exprs, last }, span }) =>
                     ExprData::Block(Spanned {
                         span,
@@ -194,7 +194,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 lhs.validate_sidecars_into(fns, errors);
                 rhs.validate_sidecars_into(fns, errors);
             }
-            ExprData::Declaration { name: _, value } => {
+            ExprData::Declaration { name: _, r#type: _, value } => {
                 value.validate_sidecars_into(fns, errors);
             }
             ExprData::Block(Spanned { inner: block, .. }) => {
@@ -226,7 +226,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
             ExprData::InfixOp(lhs, _, rhs) =>
                 lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns),
             ExprData::Var(_) => 0,
-            ExprData::Declaration { name: _, value } => value.modify_some_sidecars(fns),
+            ExprData::Declaration { name: _, r#type: _, value } => value.modify_some_sidecars(fns),
             ExprData::Block(b) =>
                 (b.exprs)
                     .iter_mut()
@@ -289,7 +289,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 foo!(lhs);
                 foo!(rhs);
             }
-            ExprData::Declaration { name: _, value } => {
+            ExprData::Declaration { name: _, r#type: _, value } => {
                 foo!(value);
             }
             ExprData::Block(b) => {
