@@ -13,8 +13,7 @@ pub enum Type {
     Abstract(Abstract),
     Function(Function),
 }
-impl_conversion_enum_variant!(Type::Concrete);
-impl_conversion_enum_variant!(Type::Abstract);
+impl_conversion_enum_variant!(Type::{Concrete, Abstract});
 
 impl_display_enum_variants_transparent!(Type { Concrete, Abstract, Function });
 impl_debug_via_display!(Type);
@@ -27,9 +26,7 @@ pub enum Concrete {
     Matrix(Matrix),
 }
 impl_conversion_copy_deref!(Concrete);
-impl_conversion_enum_variant!(Concrete::Number(NumberKind));
-impl_conversion_enum_variant!(Concrete::Vector);
-impl_conversion_enum_variant!(Concrete::Matrix);
+impl_conversion_enum_variant!(Concrete::{Number(NumberKind), Vector, Matrix});
 impl_conversion_2_hop!(NumberKind => Concrete => Type);
 impl_conversion_2_hop!(Vector => Concrete => Type);
 impl_conversion_2_hop!(Matrix => Concrete => Type);
@@ -45,8 +42,7 @@ pub enum Abstract {
 }
 impl_conversion_copy_deref!(Abstract);
 impl_display_enum_variants_transparent!(Abstract { Bool, Void });
-impl_conversion_enum_variant!(Abstract::Void);
-impl_conversion_enum_variant!(Abstract::Bool);
+impl_conversion_enum_variant!(Abstract::{Void, Bool});
 impl_conversion_2_hop!(Void => Abstract => Type);
 impl_conversion_2_hop!(Bool => Abstract => Type);
 
@@ -85,8 +81,7 @@ pub enum FunctionResult {
     Concrete(Concrete),
     Abstract(Abstract),
 }
-impl_conversion_enum_variant!(FunctionResult::Concrete);
-impl_conversion_enum_variant!(FunctionResult::Abstract);
+impl_conversion_enum_variant!(FunctionResult::{Concrete, Abstract});
 
 impl_display_enum_variants_transparent!(FunctionResult { Concrete, Abstract });
 
@@ -95,8 +90,7 @@ pub enum NumberKind {
     Integer(Integer),
     Float(Float),
 }
-impl_conversion_enum_variant!(NumberKind::Float);
-impl_conversion_enum_variant!(NumberKind::Integer);
+impl_conversion_enum_variant!(NumberKind::{Float, Integer});
 impl_conversion_copy_deref!(NumberKind);
 
 impl Display for NumberKind {
