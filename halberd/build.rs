@@ -287,10 +287,11 @@ fn codegen_instruction<'a>(
 
     // we handle types and constants separately & insert them in the final f-iil -> il phase,
     // so no need to output those instructions at all
-    let should_generate_iil = !matches!(
-        instruction.class.as_ref(),
-        "Type-Declaration" | "Constant-Creation"
-    );
+    let should_generate_iil =
+        !(matches!(
+            instruction.class.as_ref(),
+            "Type-Declaration" | "Constant-Creation"
+        ) || matches!(instruction.opname.as_ref(), "OpFunction" | "OpFunctionEnd"));
 
     if should_generate_iil {
         let hiil_struct = mods.iil_h_instructions().new_struct(&name).vis("pub");

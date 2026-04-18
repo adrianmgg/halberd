@@ -8,14 +8,14 @@ use std::{
 
 use crate::{scope::ScopeId, types::Type};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ExprSidecarInner {
     scope: Option<ScopeId>,
     r#type: Option<Type>,
 }
 
 // FIXME rename
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ExprSidecar<S, T>(ExprSidecarInner, PhantomData<(S, T)>);
 
@@ -25,7 +25,7 @@ pub(crate) trait ExprSidecarS<S> {
     fn scope_mut(&mut self) -> &mut S;
 }
 pub(crate) trait ExprSidecarT<T> {
-    fn r#type(&self) -> T;
+    fn r#type(&self) -> &T;
     fn type_mut(&mut self) -> &mut T;
 }
 
@@ -51,7 +51,7 @@ macro_rules! esx {
     };
     (@est; $self:ident; $( $ty:ty { r#type -> $body1:tt type_mut -> $body2:tt } )* ) => {
         $( impl<S> ExprSidecarT<$ty> for ExprSidecar<S, $ty> {
-            fn r#type(&$self) -> $ty $body1
+            fn r#type(&$self) -> &$ty $body1
             fn type_mut(&mut $self) -> &mut $ty $body2
         } )*
     };
@@ -74,16 +74,16 @@ esx! {@ess; self;
 }
 esx! {@est; self;
     () {
-        r#type -> {}
+        r#type -> { unsafe { & *(std::mem::align_of::<()>() as *mut ()) } }
         // pretty sure this is ok - https://old.reddit.com/r/rust/comments/rjhiod/is_it_safe_to_create_references_to_zerosized/hp3oqr1/
         type_mut -> { unsafe { &mut *(std::mem::align_of::<()>() as *mut ()) } }
     }
     Option<Type> {
-        r#type -> { self.0.r#type }
+        r#type -> { &self.0.r#type }
         type_mut -> { &mut self.0.r#type }
     }
     Type {
-        r#type -> { unsafe { self.0.r#type.unwrap_unchecked() } }
+        r#type -> { unsafe { self.0.r#type.as_ref().unwrap_unchecked() } }
         type_mut -> { unsafe { self.0.r#type.as_mut().unwrap_unchecked() } }
     }
 }
@@ -99,7 +99,7 @@ macro_rules! es_withs {
     ) => {
         impl<$s, $t> ExprSidecar<$s, $t> {
             // FIXME wait this should be taking self as owned shouldn't it uh oh
-            $(pub fn $name (&$self $(,$arg:$arg_ty)*) -> ExprSidecar<$rs, $rt> {
+            $(pub fn $name ($self $(,$arg:$arg_ty)*) -> ExprSidecar<$rs, $rt> {
                 ExprSidecar(
                     ExprSidecarInner { scope: $es, r#type: $et },
                     PhantomData,

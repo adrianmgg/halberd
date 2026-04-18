@@ -52,7 +52,7 @@ pub(crate) fn populate_types<'a>(
                         let found = scope_bound.lookup_and_modify(
                             &arg.name,
                             |item: &mut NamespaceItemPartiallyTyped| {
-                                item.r#type = Some(arg.r#type.inner)
+                                item.r#type = Some(arg.r#type.inner.clone())
                             },
                         );
                         assert!(found);
@@ -73,12 +73,12 @@ pub(crate) fn populate_types<'a>(
             //       line up
             if let ast::ExprData::Declaration { name, r#type, value } = data {
                 let name = name.inner;
-                let r#type = r#type.inner;
+                let r#type = &r#type.inner;
                 assert!(
                     universe
                         .get_scope_mut(scope)
                         .lookup_and_modify(name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
-                            Some(r#type))
+                            Some(r#type.clone()))
                 );
             }
             match sidecar.type_mut() {
@@ -129,27 +129,29 @@ pub(crate) fn infer_expr_type<'a>(
     match data {
         ast::ExprData::LiteralInt(i) => Some(i.r#type.into()),
         ast::ExprData::LiteralFloat(f) => Some(f.r#type.into()),
-        ast::ExprData::LiteralBool(_) => Some(types::Type::Bool),
+        ast::ExprData::LiteralBool(_) => Some(types::Bool.into()),
         ast::ExprData::InfixOp(lhs, op, rhs) => {
             let lhs_type = lhs.sidecar.r#type();
             let rhs_type = rhs.sidecar.r#type();
-            let lhs_and_rhs = try { (lhs_type?, rhs_type?) };
+            let lhs_and_rhs = try { (lhs_type.as_ref()?, rhs_type.as_ref()?) };
             match op.inner {
-                ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply =>
-                    lhs_and_rhs.and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs)),
+                ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply => lhs_and_rhs
+                    .and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))
+                    .cloned(),
                 ast::InfixOp::Divide => todo!(),
                 // OpDot
                 ast::InfixOp::DotProduct => lhs_and_rhs
                     .and_is_homogeneous()
                     .and_is_vector()
                     .and_to_component_type()
-                    .and_is_float()
+                    .map(Clone::clone)
                     .map(Into::into),
                 // glsl ext cross()
                 ast::InfixOp::CrossProduct => lhs_and_rhs
                     .and_is_homogeneous()
                     .and_is_vector()
                     .and_has_n_components(3)
+                    .map(Clone::clone)
                     .map(Into::into),
                 // OpMatrixTimesMatrix
                 ast::InfixOp::MatrixMultiply => {
@@ -176,13 +178,13 @@ pub(crate) fn infer_expr_type<'a>(
         ast::ExprData::Var(chumsky::span::Spanned { inner: name, .. }) => universe
             .get_scope(scope)
             .lookup(name)
-            .and_then(|i| i.r#type),
-        ast::ExprData::Declaration { name: _, r#type: _, value: _ } => Some(types::Type::Void),
+            .and_then(|i| i.r#type.clone()),
+        ast::ExprData::Declaration { name: _, r#type: _, value: _ } => Some(types::Void.into()),
         ast::ExprData::Block(spanned) => match &spanned.inner.last {
             // blocks with no terminal expression get the type void
-            None => Some(types::Type::Void),
+            None => Some(types::Void.into()),
             // blocks with a terminal expression get that expression's type if it has one
-            Some(terminal) => terminal.sidecar.r#type(),
+            Some(terminal) => terminal.sidecar.r#type().clone(),
         },
     }
 }

@@ -48,12 +48,12 @@ impl Sidecars for PhaseFullyTyped {
     type ScopeItem = NamespaceItemFullyTyped;
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct NamespaceItemPartiallyTyped {
     pub(crate) r#type: Option<types::Type>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct NamespaceItemFullyTyped {
     pub(crate) r#type: types::Type,
 }
