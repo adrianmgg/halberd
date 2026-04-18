@@ -10,14 +10,14 @@
 /// ```
 macro_rules! impl_conversion_enum_variant {
     // sugar for multiple on the same outer
-    ($outer:ident :: {$($variant:ident $(($inner:ident))?),*}) => {
+    ($outer:ident :: {$($variant:ident $(( $inner:ty ))?),*}) => {
         $( $crate::util::impl_conversion_enum_variant!{ $outer :: $variant $(( $inner ))? } )*
     };
     // sugar for variant and inner struct with same name
     ($outer:ident :: $inner:ident) => {
         $crate::util::impl_conversion_enum_variant!{ $outer :: $inner ( $inner ) }
     };
-    ($outer:ident :: $variant:ident($inner:ident)) => {
+    ($outer:ident :: $variant:ident($inner:ty)) => {
         impl From<$inner> for $outer {
             fn from(x: $inner) -> $outer { $outer::$variant(x) }
         }

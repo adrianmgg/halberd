@@ -48,6 +48,13 @@ impl Sidecars for PhaseFullyTyped {
     type ScopeItem = NamespaceItemFullyTyped;
 }
 
+pub(crate) struct PhaseIILGeneration;
+impl Sidecars for PhaseIILGeneration {
+    type Expr = ExprSidecar<ScopeId, types::Type>;
+    type Func = ScopeId;
+    type ScopeItem = NamespaceItemIILGeneration;
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NamespaceItemPartiallyTyped {
     pub(crate) r#type: Option<types::Type>,
@@ -56,6 +63,18 @@ pub(crate) struct NamespaceItemPartiallyTyped {
 #[derive(Debug, Clone)]
 pub(crate) struct NamespaceItemFullyTyped {
     pub(crate) r#type: types::Type,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NamespaceItemIILGeneration {
+    pub(crate) r#type: types::Type,
+    pub(crate) block_ref: Option<crate::iil::block::BlockLocalRef>,
+}
+
+impl From<NamespaceItemFullyTyped> for NamespaceItemIILGeneration {
+    fn from(value: NamespaceItemFullyTyped) -> Self {
+        NamespaceItemIILGeneration { r#type: value.r#type, block_ref: None }
+    }
 }
 
 pub fn compile<'a>(

@@ -5,6 +5,7 @@ use unwrap_infallible::UnwrapInfallible as _;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(u64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockLocalRef {
     block: BlockId,
     local: usize,

@@ -55,6 +55,9 @@ impl<'a, S: Sidecars> ExprData<'a, S> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LiteralInt {
+    // FIXME wait we're double-storing the type here then aren't we...
+    //       should just spit out the type-sidecarred one directly from
+    //       the lexer then maybe??
     pub r#type: types::Integer,
     pub value: BigInt,
 }
