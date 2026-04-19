@@ -259,11 +259,13 @@ fn codegen_instruction<'a>(
     match cg_operands.ret_kind {
         InstructionRetKind::Void => {}
         InstructionRetKind::RetUntyped => {
-            inst_struct.new_field("ret_id", "ok::IdResult");
+            inst_struct.new_field("ret_id", "ok::IdResult").vis("pub");
         }
         InstructionRetKind::RetTyped => {
-            inst_struct.new_field("ret_id", "ok::IdResult");
-            inst_struct.new_field("ret_type", "ok::IdResultType");
+            inst_struct.new_field("ret_id", "ok::IdResult").vis("pub");
+            inst_struct
+                .new_field("ret_type", "ok::IdResultType")
+                .vis("pub");
         }
     }
     for operand in &cg_operands.other_operands {
@@ -276,7 +278,7 @@ fn codegen_instruction<'a>(
             Some(spv_grammar::Quantifier::ZeroOrMore) => op_type = format!("Vec<{op_type}>"),
             _ => {}
         }
-        let field = inst_struct.new_field(&operand.name, op_type);
+        let field = inst_struct.new_field(&operand.name, op_type).vis("pub");
         if let Some(doc) = operand.raw.name.as_ref() {
             field.doc(doc);
         }
