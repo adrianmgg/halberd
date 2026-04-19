@@ -1,4 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+};
 
 use crate::util::{
     impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant,
@@ -7,7 +10,7 @@ use crate::util::{
 
 // FIXME can't currently represent boolean vectors
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     Concrete(Concrete),
     Abstract(Abstract),
@@ -19,7 +22,7 @@ impl_display_enum_variants_transparent!(Type { Concrete, Abstract, Function });
 impl_debug_via_display!(Type);
 
 // "Concrete Type: A numerical scalar, vector, or matrix type, or physical pointer type, or any aggregate containing only these types."
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Concrete {
     Number(NumberKind),
     Vector(Vector),
@@ -35,7 +38,7 @@ impl_display_enum_variants_transparent!(Concrete { Number, Vector, Matrix });
 impl_debug_via_display!(Concrete);
 
 // "Abstract Type: An OpTypeVoid or OpTypeBool, or logical pointer type, or any aggregate type containing any of these."
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Abstract {
     Void(Void),
     Bool(Bool),
@@ -46,10 +49,10 @@ impl_conversion_enum_variant!(Abstract::{Void, Bool});
 impl_conversion_2_hop!(Void => Abstract => Type);
 impl_conversion_2_hop!(Bool => Abstract => Type);
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Bool;
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Void;
 
 impl Display for Bool {
@@ -60,7 +63,7 @@ impl Display for Void {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "void") }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Function {
     pub args: Vec<Type>,
     pub result: Box<Type>,
@@ -86,7 +89,7 @@ impl_conversion_enum_variant!(FunctionResult::{Concrete, Abstract});
 
 impl_display_enum_variants_transparent!(FunctionResult { Concrete, Abstract });
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub enum NumberKind {
     Integer(Integer),
     Float(Float),
@@ -104,7 +107,7 @@ impl_conversion_copy_deref!(Float);
 impl_conversion_2_hop!(&Integer => Integer => Type);
 impl_conversion_2_hop!(&Float => Float => Type);
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Integer {
     Unsigned(u32),
     Signed(u32),
@@ -120,7 +123,7 @@ impl Display for Integer {
 }
 impl_debug_via_display!(Integer);
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Float {
     pub width: u32,
 }
@@ -132,7 +135,7 @@ impl Display for Float {
 }
 impl_debug_via_display!(Float);
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Vector {
     pub component_type: NumberKind,
     pub component_count: u32,
@@ -145,7 +148,7 @@ impl Display for Vector {
 }
 impl_debug_via_display!(Vector);
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Matrix {
     pub column_type: Vector,
     pub column_count: u32,
@@ -249,4 +252,107 @@ pub mod prelude {
             and_is_int -> &'a Integer = n => { matches_opt!(n, NumberKind::Integer(i) => i) }
         };
     }
+}
+
+mod to_spv {
+    use super::*;
+    use crate::spv::{self, instruction as inst, operand_kind as ok};
+
+    trait TypeToSpv {
+        fn prerequisites(&self) -> Box<dyn Iterator<Item = Type>>;
+        fn to_direct_instruction(
+            &self,
+            available: HashMap<Type, ok::IdRef>,
+        ) -> Option<spv::OpRetUntyped>;
+    }
+
+    macro_rules! impl_type_to_spv {
+        (
+            $self:ident; $available:ident;
+            $( $target:ty {
+                prereq { $req_impl:expr }
+                to { $to_impl:expr }
+            } )*
+        ) => {
+            $(impl TypeToSpv for $target {
+                fn prerequisites(&$self) -> Box<dyn Iterator<Item = Type>> { $req_impl }
+                fn to_direct_instruction(
+                    &$self,
+                    $available: HashMap<Type, ok::IdRef>,
+                ) -> Option<spv::OpRetUntyped> {
+                    try { $to_impl }
+                }
+            })*
+        };
+        (@dispatch_variants $target:ty { $($variant:ident),* }) => {
+            impl TypeToSpv for $target {
+                fn prerequisites(&self) -> Box<dyn Iterator<Item = Type>> {
+                    match self {
+                        $( Self::$variant(x) => x.prerequisites() ),*
+                    }
+                }
+                fn to_direct_instruction(
+                    &self,
+                    available: HashMap<Type, ok::IdRef>,
+                ) -> Option<spv::OpRetUntyped> {
+                    match self {
+                        $( Self::$variant(x) => x.to_direct_instruction(available) ),*
+                    }
+                }
+            }
+        };
+    }
+
+    use std::iter::{chain, empty, once};
+
+    // FIXME there's a bunch of unnecissary inefficiency in how we're doing the prereqs here atm.
+    impl_type_to_spv! { self; available;
+        Matrix {
+            prereq { Box::new(once(self.column_type.into())) }
+            to { spv::instruction::OpTypeMatrix {
+                op0: *available.get(&self.column_type.into())?,
+                op1: self.column_count.into(),
+            }.into() }
+        }
+        Vector {
+            prereq { Box::new(once(self.component_type.into())) }
+            to { spv::instruction::OpTypeVector {
+                op0: *available.get(&self.component_type.into())?,
+                op1: self.component_count.into(),
+            }.into() }
+        }
+        Integer {
+            prereq { Box::new(empty()) }
+            to { match self {
+                Self::Signed(width) => spv::instruction::OpTypeInt { op0: (*width).into(), op1: 1.into() }.into(),
+                Self::Unsigned(width) => spv::instruction::OpTypeInt { op0: (*width).into(), op1: 0.into() }.into(),
+            } }
+        }
+        Float {
+            prereq { Box::new(empty()) }
+            to { inst::OpTypeFloat {op0: self.width.into(), op1: None }.into() }
+        }
+        Void {
+            prereq { Box::new(empty()) }
+            to { inst::OpTypeVoid {}.into() }
+        }
+        Bool {
+            prereq { Box::new(empty()) }
+            to { inst::OpTypeBool {}.into() }
+        }
+        Function {
+            prereq { Box::new(chain(
+                once(*self.result.clone()),
+                self.args.clone().into_iter()
+            )) }
+            to { inst::OpTypeFunction {
+                op0: *available.get(&self.result)?,
+                op1: self.args.iter().map(|arg| available.get(arg).copied()).try_collect()?,
+            }.into() }
+        }
+    }
+    impl_type_to_spv! {@dispatch_variants Type { Concrete, Abstract, Function }}
+    impl_type_to_spv! {@dispatch_variants Concrete { Number, Vector, Matrix }}
+    impl_type_to_spv! {@dispatch_variants Abstract { Void, Bool }}
+    impl_type_to_spv! {@dispatch_variants NumberKind { Integer, Float }}
 }

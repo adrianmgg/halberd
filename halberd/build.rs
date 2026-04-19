@@ -114,6 +114,37 @@ fn codegen_instructions(
         .map(|i| codegen_instruction(grammar, mods, i))
         .collect();
 
+    // spv instruction enums
+    for (enum_name, irk) in [
+        ("OpVoid", InstructionRetKind::Void),
+        ("OpRetUntyped", InstructionRetKind::RetUntyped),
+        ("OpRetTyped", InstructionRetKind::RetTyped),
+    ] {
+        let enum_ = mods.spv().new_enum(enum_name).vis("pub");
+        for inst in &instruction_infos {
+            if inst.operands.ret_kind != irk {
+                continue;
+            }
+            enum_
+                .new_variant(&inst.name)
+                .tuple(format!("instruction::{}", &inst.name));
+        }
+        for inst in &instruction_infos {
+            if inst.operands.ret_kind != irk {
+                continue;
+            }
+            let from_impl = mods
+                .spv()
+                .new_impl(enum_name)
+                .impl_trait(format!("From<instruction::{}>", &inst.name));
+            from_impl
+                .new_fn("from")
+                .arg("x", format!("instruction::{}", &inst.name))
+                .ret(enum_name)
+                .line(format!("{enum_name}::{variant}(x)", variant = &inst.name));
+        }
+    }
+
     let f_op_expr = mods
         .iil_flat()
         .new_enum("OpExpr")
@@ -259,10 +290,10 @@ fn codegen_instruction<'a>(
     match cg_operands.ret_kind {
         InstructionRetKind::Void => {}
         InstructionRetKind::RetUntyped => {
-            inst_struct.new_field("ret_id", "ok::IdResult").vis("pub");
+            // inst_struct.new_field("ret_id", "ok::IdResult").vis("pub");
         }
         InstructionRetKind::RetTyped => {
-            inst_struct.new_field("ret_id", "ok::IdResult").vis("pub");
+            // inst_struct.new_field("ret_id", "ok::IdResult").vis("pub");
             inst_struct
                 .new_field("ret_type", "ok::IdResultType")
                 .vis("pub");
@@ -358,18 +389,27 @@ fn codegen_instruction<'a>(
             }
         }
 
-        // impl intospv
+        // impl iilop
         if matches!(
             cg_operands.ret_kind,
             InstructionRetKind::Void | InstructionRetKind::RetTyped
         ) {
-            let into_spv = mods.iil_f_instructions().new_impl(&name);
-            into_spv.impl_trait(match cg_operands.ret_kind {
+            let impl_iil_op_x = mods.iil_f_instructions().new_impl(&name);
+            impl_iil_op_x.impl_trait(match cg_operands.ret_kind {
                 InstructionRetKind::RetUntyped => unreachable!(),
-                InstructionRetKind::RetTyped => "iil::flat::IntoSPVExpr",
-                InstructionRetKind::Void => "iil::flat::IntoSPVVoid",
+                InstructionRetKind::RetTyped => "iil::flat::IilOpExpr",
+                InstructionRetKind::Void => "iil::flat::IilOpVoid",
             });
-            let into_spv_fn = into_spv.new_fn(match cg_operands.ret_kind {
+
+            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+                impl_iil_op_x
+                    .new_fn("ret_type")
+                    .arg_ref_self()
+                    .ret("&types::Type")
+                    .line("&self.ret_type");
+            }
+
+            let into_spv_fn = impl_iil_op_x.new_fn(match cg_operands.ret_kind {
                 InstructionRetKind::RetUntyped => unreachable!(),
                 InstructionRetKind::RetTyped => "into_spv_expr",
                 InstructionRetKind::Void => "into_spv_void",
@@ -379,9 +419,6 @@ fn codegen_instruction<'a>(
                 into_spv_fn.generic("MapTypes: Fn(types::Type) -> ok::IdResultType");
             }
             into_spv_fn.arg_self();
-            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
-                into_spv_fn.arg("ret_id", "ok::IdResult");
-            }
             into_spv_fn.arg("map_refs", "MapRefs");
             if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
                 into_spv_fn.arg("map_types", "MapTypes");
@@ -389,7 +426,6 @@ fn codegen_instruction<'a>(
             into_spv_fn.ret("impl spv::Instruction");
             into_spv_fn.line(format!("spv::instruction::{name} {{"));
             if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
-                into_spv_fn.line("    ret_id,");
                 into_spv_fn.line("    ret_type: map_types(self.ret_type),");
             }
             for operand in &cg_operands.other_operands {
@@ -516,7 +552,7 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                 .new_struct(ensure_valid_ident(kind))
                 .vis("pub")
                 .doc(clean_doc(doc))
-                .derive("Debug")
+                .derive("Debug,Copy,Clone,Hash,PartialEq,Eq")
                 .tuple_field("pub u32");
         }
         spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
