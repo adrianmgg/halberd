@@ -18,7 +18,7 @@ pub struct Universe<Item> {
 impl<Item> Universe<Item> {
     pub fn new() -> Self {
         let root_scope_id = ScopeId::from_idx(0);
-        let scopes = vec![Scope { parent: None, items: Default::default() }];
+        let scopes = vec![Scope { parent: None, items: HashMap::default() }];
         Self { scopes, root_scope_id }
     }
 
@@ -94,7 +94,7 @@ impl<Item> Universe<Item> {
     fn new_scope(&mut self, parent_id: ScopeId) -> ScopeId {
         let id = ScopeId::from_idx(self.scopes.len());
         self.scopes
-            .push(Scope { parent: Some(parent_id), items: Default::default() });
+            .push(Scope { parent: Some(parent_id), items: HashMap::default() });
         id
     }
 
@@ -132,11 +132,11 @@ pub struct ScopeRefMut<'a, Item> {
     scope: ScopeId,
 }
 
-impl<'a, Item> ScopeRef<'a, Item> {
+impl<Item> ScopeRef<'_, Item> {
     pub fn lookup(&self, key: &str) -> Option<&Item> { self.universe.scope_lookup(self.scope, key) }
 }
 
-impl<'a, Item> ScopeRefMut<'a, Item> {
+impl<Item> ScopeRefMut<'_, Item> {
     pub fn lookup(&self, key: &str) -> Option<&Item> { self.universe.scope_lookup(self.scope, key) }
 
     pub fn lookup_and_modify<F: FnOnce(&mut Item)>(&mut self, key: &str, f: F) -> bool {

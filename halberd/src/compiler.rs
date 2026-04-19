@@ -77,14 +77,14 @@ impl From<NamespaceItemFullyTyped> for NamespaceItemIILGeneration {
     }
 }
 
-pub fn compile<'a>(
-    e: ast::File<'a, PhaseInitial>,
+pub fn compile(
+    e: ast::File<'_, PhaseInitial>,
 ) -> Result<
     (
-        ast::File<'a, PhaseFullyTyped>,
+        ast::File<'_, PhaseFullyTyped>,
         scope::Universe<NamespaceItemFullyTyped>,
     ),
-    Vec<ariadne::Report<'a>>,
+    Vec<ariadne::Report<'_>>,
 > {
     let mut universe = scope::Universe::new();
 
@@ -94,8 +94,8 @@ pub fn compile<'a>(
     Ok((e, universe))
 }
 
-pub fn foobar<'a>(
-    file: ast::File<'a, PhaseFullyTyped>,
+pub fn foobar(
+    file: ast::File<'_, PhaseFullyTyped>,
     universe: scope::Universe<NamespaceItemFullyTyped>,
 ) {
     let file: ast::File<'_, PhaseIILGeneration> = file

@@ -24,7 +24,7 @@ fn main() -> eyre::Result<()> {
 
     let mut mods = Modules(codegen::Scope::new());
 
-    let allows = "allow(non_camel_case_types,non_upper_case_globals,clippy::upper_case_acronyms,clippy::enum_variant_names,unused)";
+    let allows = "allow(unused, non_camel_case_types, non_upper_case_globals, clippy::upper_case_acronyms, clippy::enum_variant_names, clippy::doc_markdown, clippy::wildcard_imports)";
     mods.iil().vis("pub").attr(allows);
     mods.iil_flat()
         .vis("pub")

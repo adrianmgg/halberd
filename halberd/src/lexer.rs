@@ -30,7 +30,7 @@ pub enum Token<'src> {
     Type(types::Type),
 }
 
-impl<'src> Display for Token<'src> {
+impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Token::Keyword(keyword) => write!(f, "{keyword}"),
@@ -129,7 +129,7 @@ impl_conversion_2_hop!(u64 => BigInt => NumberValue);
 // for conciseness, allow using a Keyword variant as a 1-element Token sequence
 // containing the Token corresponding with itself,
 // so that e.g. `just(Keyword::True)` works as a parser accepting only Token::Keyword(Keyword::True)
-impl<'src> chumsky::container::OrderedSeq<'_, Token<'src>> for Keyword {}
+impl chumsky::container::OrderedSeq<'_, Token<'_>> for Keyword {}
 impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Keyword {
     type Item<'a>
         = Token<'src>
@@ -152,7 +152,7 @@ impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Keyword {
 }
 
 // FIXME should prob macro this
-impl<'src> chumsky::container::OrderedSeq<'_, Token<'src>> for Symbol {}
+impl chumsky::container::OrderedSeq<'_, Token<'_>> for Symbol {}
 impl<'me, 'src> chumsky::container::Seq<'me, Token<'src>> for Symbol {
     type Item<'a>
         = Token<'src>
@@ -532,7 +532,7 @@ impl<T> FilteredCollector<T> {
     fn inner(self) -> Vec<T> { self.0 }
 }
 impl<T> Default for FilteredCollector<T> {
-    fn default() -> Self { Self(Default::default()) }
+    fn default() -> Self { Self(Vec::default()) }
 }
 impl<T> chumsky::container::Container<Option<T>> for FilteredCollector<T> {
     fn push(&mut self, item: Option<T>) {
