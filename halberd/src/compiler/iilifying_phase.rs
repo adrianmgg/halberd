@@ -14,6 +14,7 @@ use crate::{
     scope,
     spv::operand_kind as ok,
     types,
+    util::matches_opt,
 };
 
 fn bar<'a>(
@@ -46,36 +47,41 @@ fn foo<'a>(
 //      we could instead have some system for forward-declaring/reserving block entries before the
 //      blocks have been created
 
-fn push_expr_to_block<'a>(
+/// inserts any intermediary things to the provided block,
+/// and returns the (not yet inserted) block item representing this top-level expr
+fn push_expr_to_block_mostly<'a>(
     expr: ast::Expr<'a, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockbuilder: &mut iil::block::BlockBuilder<iil::h::BlockLocalVoid, iil::h::BlockLocalExpr>,
     blockctx: &mut iil::block::Ctx,
-) -> Option<block::BlockLocalRef> {
+) -> block::BlockLocal<h::BlockLocalVoid, h::BlockLocalExpr> {
     match expr.data {
         ast::ExprData::LiteralInt(Spanned { inner: ast::LiteralInt { r#type, value }, .. }) =>
-            Some(blockbuilder.push_valued_local(h::Constant::Int { r#type, value }.into())),
+            block::BlockLocal::Valued(h::Constant::Int { r#type, value }.into()),
         ast::ExprData::LiteralFloat(Spanned {
             inner: ast::LiteralFloat { r#type, value }, ..
-        }) => Some(blockbuilder.push_valued_local(h::Constant::Float { r#type, value }.into())),
+        }) => block::BlockLocal::Valued(h::Constant::Float { r#type, value }.into()),
         ast::ExprData::LiteralBool(Spanned { inner: value, .. }) =>
-            Some(blockbuilder.push_valued_local(h::Constant::Bool { value }.into())),
+            block::BlockLocal::Valued(h::Constant::Bool { value }.into()),
         // TODO implement
         ast::ExprData::InfixOp(lhs, op, rhs) => todo!(),
-        ast::ExprData::Block(Spanned { inner: ast_block, .. }) => Some(
-            blockbuilder.push_valued_local(
-                Box::new(blockctx.new_block(|b, ctx| {
-                    for ast_expr in ast_block.exprs.into_iter() {
-                        push_expr_to_block(ast_expr, universe, b, ctx);
+        ast::ExprData::Block(Spanned { inner: ast_block, .. }) => {
+            let x: h::Block = blockctx.new_block(|b, ctx| {
+                for ast_expr in ast_block.exprs.into_iter() {
+                    push_expr_to_block_mostly(ast_expr, universe, b, ctx);
+                }
+                ast_block.last.and_then(|terminal| {
+                    match push_expr_to_block_mostly(*terminal, universe, b, ctx) {
+                        block::BlockLocal::Void(void) => {
+                            blockbuilder.push_void_local(void);
+                            None
+                        }
+                        block::BlockLocal::Valued(valued) => Some(valued),
                     }
-                    ast_block
-                        .last
-                        .and_then(|terminal| push_expr_to_block(*terminal, universe, b, ctx))
-                        .and_then(|terminal_ref| terminal_ref.into())
-                }))
-                .into(),
-            ),
-        ),
+                })
+            });
+            block::BlockLocal::Valued(h::BlockLocalExpr::Block(Box::new(x)))
+        }
         ast::ExprData::Declaration { name, r#type, value } => {
             // add the OpVariable instruction declaring our var
             let var_br = blockbuilder.push_valued_local(
@@ -94,22 +100,27 @@ fn push_expr_to_block<'a>(
             }));
 
             // add our initial value
-            let value_br = push_expr_to_block(*value, universe, blockbuilder, blockctx).unwrap();
+            let value_br = push_expr_to_block_mostly(*value, universe, blockbuilder, blockctx);
+            // FIXME don't unwrap
+            let value_br = matches_opt!(value_br, block::BlockLocal::Valued(v) => v).unwrap();
+            let value_br = blockbuilder.push_valued_local(value_br);
 
-            // add an OpStore
+            // add an OpStore to save our initial value
             blockbuilder.push_void_local(f::OpVoid::OpStore(fops::OpStore {
                 op0: var_br,
                 op1: value_br,
                 op2: None,
             }));
-            None
+
+            // FIXME this should be able to be just None...
+            block::BlockLocal::Void(f::OpVoid::OpNop(fops::OpNop))
         }
         ast::ExprData::Var(Spanned { inner: name, .. }) => {
             // FIXME need to do proper errors instead of panic here
             let scope = universe.get_scope(expr.sidecar.scope());
             let var_info = scope.lookup(name).unwrap();
             let block_ref = var_info.block_ref.unwrap();
-            block_ref.into()
+            block::BlockLocal::Valued(block_ref.into())
         }
     }
 }
