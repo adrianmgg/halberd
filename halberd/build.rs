@@ -33,7 +33,7 @@ fn main() -> eyre::Result<()> {
     mods.iil_f_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::{spv::operand_kind as ok, iil::{self, block}, types};");
+        .raw("use crate::{spv::{self, operand_kind as ok}, iil::{self, block}, types};");
     mods.spv().vis("pub").attr(allows);
     mods.spv_operandkind().vis("pub");
     mods.spv_instruction()
@@ -342,6 +342,7 @@ fn codegen_instruction<'a>(
             fiil_struct.new_field(&operand.name, op_type).vis("pub");
         }
 
+        // impl block::Renumberable for this f-iil instruction
         let renumberable = mods
             .iil_f_instructions()
             .new_impl(&name)
@@ -355,6 +356,69 @@ fn codegen_instruction<'a>(
             if operand.is_expr {
                 renumber.line(format!("self.{}.renumber(from, to);", &operand.name));
             }
+        }
+
+        // impl intospv
+        if matches!(
+            cg_operands.ret_kind,
+            InstructionRetKind::Void | InstructionRetKind::RetTyped
+        ) {
+            let into_spv = mods.iil_f_instructions().new_impl(&name);
+            into_spv.impl_trait(match cg_operands.ret_kind {
+                InstructionRetKind::RetUntyped => unreachable!(),
+                InstructionRetKind::RetTyped => "iil::flat::IntoSPVExpr",
+                InstructionRetKind::Void => "iil::flat::IntoSPVVoid",
+            });
+            let into_spv_fn = into_spv.new_fn(match cg_operands.ret_kind {
+                InstructionRetKind::RetUntyped => unreachable!(),
+                InstructionRetKind::RetTyped => "into_spv_expr",
+                InstructionRetKind::Void => "into_spv_void",
+            });
+            into_spv_fn.generic("MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef");
+            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+                into_spv_fn.generic("MapTypes: Fn(types::Type) -> ok::IdResultType");
+            }
+            into_spv_fn.arg_self();
+            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+                into_spv_fn.arg("ret_id", "ok::IdResult");
+            }
+            into_spv_fn.arg("map_refs", "MapRefs");
+            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+                into_spv_fn.arg("map_types", "MapTypes");
+            }
+            into_spv_fn.ret("impl spv::Instruction");
+            into_spv_fn.line(format!("spv::instruction::{name} {{"));
+            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+                into_spv_fn.line("    ret_id,");
+                into_spv_fn.line("    ret_type: map_types(self.ret_type),");
+            }
+            for operand in &cg_operands.other_operands {
+                if operand.is_expr {
+                    match operand.raw.quantifier {
+                        Some(spv_grammar::Quantifier::ZeroOrOne) => {
+                            into_spv_fn.line(format!(
+                                "    {name}: self.{name}.map(&map_refs),",
+                                name = &operand.name
+                            ));
+                        }
+                        Some(spv_grammar::Quantifier::ZeroOrMore) => {
+                            into_spv_fn.line(format!(
+                                "    {name}: self.{name}.into_iter().map(map_refs).collect(),",
+                                name = &operand.name
+                            ));
+                        }
+                        None => {
+                            into_spv_fn.line(format!(
+                                "    {name}: map_refs(self.{name}),",
+                                name = &operand.name
+                            ));
+                        }
+                    }
+                } else {
+                    into_spv_fn.line(format!("    {name}: self.{name},", name = &operand.name));
+                }
+            }
+            into_spv_fn.line("}");
         }
     }
 
