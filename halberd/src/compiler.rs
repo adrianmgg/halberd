@@ -102,7 +102,7 @@ pub fn foobar(
         .map_sidecars(&mut ast::SidecarFns { expr: &mut |_, car| car, func: &mut |_, car| car });
     let mut universe: scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem> =
         universe.map(Into::into);
-    iilifying_phase::bar(file, &mut universe);
+    iilifying_phase::process_file(file, &mut universe);
 }
 
 #[cfg(test)]

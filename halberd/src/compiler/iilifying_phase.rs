@@ -20,14 +20,14 @@ use crate::{
     util::{Either, matches_opt},
 };
 
-pub(super) fn bar(
+pub(super) fn process_file(
     file: ast::File<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
 ) {
     let mut blockctx = block::Ctx::new();
     for (name, functions) in file.functions {
         for function in functions {
-            let f = foo(function, universe, &mut blockctx);
+            let f = process_function(function, universe, &mut blockctx);
             println!("====================");
             dbg!(&f);
             println!(">>>>>>>>>>>>>>>>>>>>");
@@ -37,7 +37,7 @@ pub(super) fn bar(
     }
 }
 
-fn foo(
+fn process_function(
     function: ast::Function<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockctx: &mut block::Ctx,
