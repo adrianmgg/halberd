@@ -89,3 +89,9 @@ macro_rules! impl_display_enum_variants_transparent {
     };
 }
 pub(crate) use impl_display_enum_variants_transparent;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
