@@ -28,17 +28,6 @@ pub enum Constant {
     Bool { value: bool },
 }
 
-impl Expr {
-    // pub fn flatten(self, ctx: &mut block::Ctx) -> BlockLocalExpr {
-    //     match self {
-    //         Expr::Op(op_expr) => BlockLocalExpr::Block(Box::new(op_expr.flatten(ctx))),
-    //         Expr::Constant(constant) => todo!(),
-    //     }
-    // }
-}
-
-pub type BlockLocalVoid = iil::flat::OpVoid;
-
 #[derive(Debug)]
 pub enum BlockLocalExpr {
     Op(iil::flat::OpExpr),
@@ -48,8 +37,18 @@ pub enum BlockLocalExpr {
 }
 impl_conversion_enum_variant!(BlockLocalExpr::{Op(iil::flat::OpExpr), Block(Box<Block>), Constant(Constant), Ref(block::BlockLocalRef)});
 
+#[derive(Debug)]
+pub enum FlatBlockLocalExpr {
+    Op(iil::flat::OpExpr),
+    Constant(Constant),
+    Ref(block::BlockLocalRef),
+}
+impl_conversion_enum_variant!(FlatBlockLocalExpr::{Op(iil::flat::OpExpr), Constant(Constant), Ref(block::BlockLocalRef)});
+
+pub type BlockLocalVoid = iil::flat::OpVoid;
 pub type BlockTerminal = BlockLocalExpr;
 pub type Block = block::Block<BlockLocalVoid, BlockLocalExpr, Option<BlockTerminal>>;
+pub type FlatBlock = block::Block<BlockLocalVoid, FlatBlockLocalExpr, Option<BlockTerminal>>;
 
 #[derive(Debug)]
 pub struct Function {

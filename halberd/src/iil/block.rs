@@ -81,6 +81,44 @@ pub struct Block<VoidLocal, ValuedLocal, Terminal> {
     terminal: Terminal,
 }
 
+impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal> {
+    pub fn id(&self) -> BlockId { self.id }
+
+    pub fn locals(
+        &self,
+    ) -> impl Iterator<Item = (BlockLocalRef, &BlockLocal<VoidLocal, ValuedLocal>)> {
+        self.locals
+            .iter()
+            .enumerate()
+            .map(|(i, local)| (BlockLocalRef { block: self.id, local: i }, local))
+    }
+
+    pub fn map<NewVoidLocal, NewValuedLocal, NewTerminal, MapVoid, MapValued, MapTerminal>(
+        self,
+        map_void: MapVoid,
+        map_valued: MapValued,
+        map_terminal: MapTerminal,
+    ) -> Block<NewVoidLocal, NewValuedLocal, NewTerminal>
+    where
+        MapVoid: Fn(VoidLocal) -> NewVoidLocal,
+        MapValued: Fn(ValuedLocal) -> NewValuedLocal,
+        MapTerminal: FnOnce(Terminal) -> NewTerminal,
+    {
+        Block {
+            id: self.id,
+            locals: self
+                .locals
+                .into_iter()
+                .map(|local| match local {
+                    BlockLocal::Void(void) => BlockLocal::Void(map_void(void)),
+                    BlockLocal::Valued(valued) => BlockLocal::Valued(map_valued(valued)),
+                })
+                .collect(),
+            terminal: map_terminal(self.terminal),
+        }
+    }
+}
+
 impl<VoidLocal, ValuedLocal, Terminal> Debug for Block<VoidLocal, ValuedLocal, Terminal>
 where
     VoidLocal: Debug,
@@ -90,7 +128,6 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("Block");
         s.field("id", &self.id);
-        // s.field("locals", &self.locals);
         for (i, local) in self.locals.iter().enumerate() {
             match local {
                 BlockLocal::Void(local) => {
