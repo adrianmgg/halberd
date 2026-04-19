@@ -204,3 +204,26 @@ fn push_expr_to_block_mostly<'a>(
         }
     }
 }
+
+fn flatten(block: h::Block) -> h::FlatBlock {
+    let is_already_flat = !block.locals().any(|(_, local)| {
+        matches!(
+            local,
+            block::BlockLocal::Valued(h::BlockLocalExpr::Block(_))
+        )
+    });
+    if is_already_flat {
+        block.map(
+            std::convert::identity,
+            |valued| match valued {
+                h::BlockLocalExpr::Block(_) => unreachable!(),
+                h::BlockLocalExpr::Op(o) => h::FlatBlockLocalExpr::Op(o),
+                h::BlockLocalExpr::Constant(c) => h::FlatBlockLocalExpr::Constant(c),
+                h::BlockLocalExpr::Ref(r) => h::FlatBlockLocalExpr::Ref(r),
+            },
+            std::convert::identity,
+        )
+    } else {
+        todo!()
+    }
+}
