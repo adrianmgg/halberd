@@ -6,20 +6,22 @@ use crate::{
 };
 
 pub trait IntoSPVExpr {
-    fn into_spv_expr<MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef, MapTypes: Fn(types::Type)>(
+    fn into_spv_expr<
+        MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef,
+        MapTypes: Fn(types::Type) -> ok::IdResultType,
+    >(
         self,
         ret_id: ok::IdResult,
-        map_types: MapTypes,
         map_refs: MapRefs,
-    ) -> dyn spv::Instruction;
+        map_types: MapTypes,
+    ) -> impl spv::Instruction;
 }
 
 pub trait IntoSPVVoid {
-    fn into_spv_void<MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef, MapTypes: Fn(types::Type)>(
+    fn into_spv_void<MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef>(
         self,
-        map_types: MapTypes,
         map_refs: MapRefs,
-    ) -> dyn spv::Instruction;
+    ) -> impl spv::Instruction;
 }
 
 pub mod instruction {
