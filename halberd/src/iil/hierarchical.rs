@@ -54,7 +54,6 @@ pub mod instruction {
     pub struct OpFunction {
         pub control: enumset::EnumSet<operand_kind::FunctionControl>,
         pub r#type: types::Function,
-        // pub body: Vec<super::OpOrBlock>,
-        pub body: super::OpExpr,
+        pub body: super::Block,
     }
 }

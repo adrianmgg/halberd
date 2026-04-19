@@ -27,10 +27,11 @@ fn bar<'a>(
 }
 
 fn foo<'a>(
-    function: ast::Function<'a, PhaseFullyTyped>,
-    universe: &scope::Universe<<PhaseFullyTyped as Sidecars>::ScopeItem>,
-) -> iil::h::instruction::OpFunction {
-    iil::h::instruction::OpFunction {
+    function: ast::Function<'a, PhaseIILGeneration>,
+    universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
+    blockctx: &mut iil::block::Ctx,
+) -> hops::OpFunction {
+    hops::OpFunction {
         control: ok::FunctionControl::None,
         r#type: types::Function {
             args: function
@@ -41,7 +42,16 @@ fn foo<'a>(
                 .collect(),
             result: Box::new(function.data.return_type.inner.clone()),
         },
-        body: todo!(),
+        body: blockctx.new_block(|blockbuilder, blockctx| {
+            let x = push_expr_to_block_mostly(function.data.body, universe, blockbuilder, blockctx);
+            match x {
+                block::BlockLocal::Void(void) => {
+                    blockbuilder.push_void_local(void);
+                    None
+                }
+                block::BlockLocal::Valued(valued) => Some(valued),
+            }
+        }),
     }
 }
 
@@ -107,7 +117,20 @@ fn push_expr_to_block_mostly<'a>(
                     })
                     .into(),
                 },
-                ast::InfixOp::Multiply => todo!(),
+                ast::InfixOp::Multiply => match r#type.and_is_number().unwrap() {
+                    types::NumberKind::Integer(_) => f::OpExpr::OpIMul(fops::OpIMul {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                    types::NumberKind::Float(_) => f::OpExpr::OpFMul(fops::OpFMul {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                },
                 ast::InfixOp::Divide => todo!(),
                 ast::InfixOp::DotProduct => todo!(),
                 ast::InfixOp::CrossProduct => todo!(),
