@@ -49,7 +49,11 @@ fn main() {
         );
         match compiler::compile(file) {
             Ok((file, universe)) => {
-                dbg!(file, universe);
+                dbg!(&file, &universe);
+                println!(
+                    "================================================================================"
+                );
+                compiler::foobar(file, universe);
             }
             Err(errors) =>
                 for error in errors {

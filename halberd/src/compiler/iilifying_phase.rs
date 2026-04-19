@@ -10,7 +10,7 @@ use crate::{
         sidecars::{ExprSidecarS, ExprSidecarT},
     },
     iil::{
-        self, block,
+        block,
         f::{self, instruction as fops},
         h::{self, instruction as hops},
     },
@@ -20,18 +20,25 @@ use crate::{
     util::matches_opt,
 };
 
-fn bar<'a>(
-    file: ast::File<'a, PhaseFullyTyped>,
-    universe: scope::Universe<<PhaseFullyTyped as Sidecars>::ScopeItem>,
+pub(super) fn bar<'a>(
+    file: ast::File<'a, PhaseIILGeneration>,
+    universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
 ) {
+    let mut blockctx = block::Ctx::new();
+    for (name, functions) in file.functions.into_iter() {
+        for function in functions.into_iter() {
+            let f = foo(function, universe, &mut blockctx);
+            dbg!(&f);
+        }
+    }
 }
 
 fn foo<'a>(
     function: ast::Function<'a, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
-    blockctx: &mut iil::block::Ctx,
-) -> hops::OpFunction {
-    hops::OpFunction {
+    blockctx: &mut block::Ctx,
+) -> h::Function {
+    h::Function {
         control: ok::FunctionControl::None,
         r#type: types::Function {
             args: function
@@ -65,8 +72,8 @@ fn foo<'a>(
 fn push_expr_to_block_mostly<'a>(
     expr: ast::Expr<'a, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
-    blockbuilder: &mut iil::block::BlockBuilder<iil::h::BlockLocalVoid, iil::h::BlockLocalExpr>,
-    blockctx: &mut iil::block::Ctx,
+    blockbuilder: &mut block::BlockBuilder<h::BlockLocalVoid, h::BlockLocalExpr>,
+    blockctx: &mut block::Ctx,
 ) -> block::BlockLocal<h::BlockLocalVoid, h::BlockLocalExpr> {
     match expr.data {
         ast::ExprData::LiteralInt(Spanned { inner: ast::LiteralInt { r#type, value }, .. }) =>

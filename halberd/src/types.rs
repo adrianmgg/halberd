@@ -75,6 +75,7 @@ impl Display for Function {
         write!(f, "): {}", self.result)
     }
 }
+impl_debug_via_display!(Function);
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum FunctionResult {

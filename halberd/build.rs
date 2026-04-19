@@ -127,7 +127,10 @@ fn codegen_instructions(
         .map(|i| codegen_instruction(grammar, mods, i))
         .collect();
 
-    let h_op_expr = (mods.iil_hierarchical()).new_enum("OpExpr").vis("pub");
+    let h_op_expr = (mods.iil_hierarchical())
+        .new_enum("OpExpr")
+        .vis("pub")
+        .derive("Debug");
     instruction_infos
         .iter()
         .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
@@ -136,7 +139,11 @@ fn codegen_instructions(
                 .new_variant(&ii.name)
                 .tuple(format!("instruction::{}", ii.name));
         });
-    let f_op_expr = mods.iil_flat().new_enum("OpExpr").vis("pub");
+    let f_op_expr = mods
+        .iil_flat()
+        .new_enum("OpExpr")
+        .vis("pub")
+        .derive("Debug");
     instruction_infos
         .iter()
         .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
@@ -173,6 +180,7 @@ fn codegen_instructions(
     //       debug-related and hardware-specific things i dont think we super need in 1.0
 
     let h_op_void = mods.iil_hierarchical().new_enum("OpVoid").vis("pub");
+    h_op_void.derive("Debug");
     instruction_infos
         .iter()
         .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
@@ -182,6 +190,7 @@ fn codegen_instructions(
                 .tuple(format!("instruction::{}", ii.name));
         });
     let f_op_void = mods.iil_flat().new_enum("OpVoid").vis("pub");
+    f_op_void.derive("Debug");
     instruction_infos
         .iter()
         .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
@@ -296,7 +305,11 @@ fn codegen_instruction<'a>(
         ) || matches!(instruction.opname.as_ref(), "OpFunction" | "OpFunctionEnd"));
 
     if should_generate_iil {
-        let hiil_struct = mods.iil_h_instructions().new_struct(&name).vis("pub");
+        let hiil_struct = mods
+            .iil_h_instructions()
+            .new_struct(&name)
+            .vis("pub")
+            .derive("Debug");
         match cg_operands.ret_kind {
             InstructionRetKind::Void => {}
             InstructionRetKind::RetUntyped => {}
@@ -373,7 +386,11 @@ fn codegen_instruction<'a>(
             */
         }
 
-        let fiil_struct = mods.iil_f_instructions().new_struct(&name).vis("pub");
+        let fiil_struct = mods
+            .iil_f_instructions()
+            .new_struct(&name)
+            .vis("pub")
+            .derive("Debug");
         match cg_operands.ret_kind {
             InstructionRetKind::Void => {}
             InstructionRetKind::RetUntyped => {}
