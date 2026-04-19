@@ -17,7 +17,7 @@ use crate::{
     scope,
     spv::operand_kind as ok,
     types::{self, prelude::ExtAnyType},
-    util::matches_opt,
+    util::{Either, matches_opt},
 };
 
 pub(super) fn bar<'a>(
@@ -227,24 +227,22 @@ fn flatten_into(
             block::BlockLocal::Void(void) => {
                 blockbuilder.push_void_local(void);
             }
-            block::BlockLocal::Valued(valued) => match valued {
-                h::BlockLocalExpr::Op(o) => renumbers.push((
-                    n,
-                    blockbuilder.push_valued_local(h::FlatBlockLocalExpr::Op(o)),
-                )),
-                h::BlockLocalExpr::Constant(c) => renumbers.push((
-                    n,
-                    blockbuilder.push_valued_local(h::FlatBlockLocalExpr::Constant(c)),
-                )),
-                h::BlockLocalExpr::Ref(r) => renumbers.push((
-                    n,
-                    blockbuilder.push_valued_local(h::FlatBlockLocalExpr::Ref(r)),
-                )),
-                h::BlockLocalExpr::Block(b) =>
-                    if let Some(terminal) = flatten_into(*b, blockbuilder) {
-                        renumbers.push((n, blockbuilder.push_valued_local(terminal)));
-                    },
-            },
+            block::BlockLocal::Valued(valued) => {
+                let x = match valued {
+                    h::BlockLocalExpr::Op(o) => Either::Left(h::FlatBlockLocalExpr::Op(o)),
+                    h::BlockLocalExpr::Constant(c) =>
+                        Either::Left(h::FlatBlockLocalExpr::Constant(c)),
+                    h::BlockLocalExpr::Ref(r) => Either::Left(h::FlatBlockLocalExpr::Ref(r)),
+                    h::BlockLocalExpr::Block(b) => Either::Right(b),
+                };
+                match x {
+                    Either::Left(l) => renumbers.push((n, blockbuilder.push_valued_local(l))),
+                    Either::Right(b) =>
+                        if let Some(terminal) = flatten_into(*b, blockbuilder) {
+                            renumbers.push((n, blockbuilder.push_valued_local(terminal)));
+                        },
+                }
+            }
         }
     }
     terminal.and_then(|e| match e {
