@@ -144,14 +144,14 @@ pub(crate) fn infer_expr_type<'a>(
                     .and_is_homogeneous()
                     .and_is_vector()
                     .and_to_component_type()
-                    .map(Clone::clone)
+                    .copied()
                     .map(Into::into),
                 // glsl ext cross()
                 ast::InfixOp::CrossProduct => lhs_and_rhs
                     .and_is_homogeneous()
                     .and_is_vector()
                     .and_has_n_components(3)
-                    .map(Clone::clone)
+                    .copied()
                     .map(Into::into),
                 // OpMatrixTimesMatrix
                 ast::InfixOp::MatrixMultiply => {

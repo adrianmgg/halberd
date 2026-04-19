@@ -39,7 +39,7 @@ pub(super) fn populate_scopes<'a>(
                 for arg in data.args.iter() {
                     universe
                         .get_scope_mut(new_scope)
-                        .insert(arg.name.inner.clone(), Default::default());
+                        .insert(arg.name.inner.clone(), ());
                 }
                 *scope = Some(new_scope);
                 (true, new_scope)
@@ -67,9 +67,7 @@ pub(super) fn populate_scopes<'a>(
                             universe.get_scope_mut(super_scope).new_subscope(),
                         ast::ExprData::Declaration { name, r#type: _, value: _ } => {
                             let new_scope = universe.get_scope_mut(super_scope).new_subscope();
-                            universe
-                                .get_scope_mut(new_scope)
-                                .insert(name.inner, Default::default());
+                            universe.get_scope_mut(new_scope).insert(name.inner, ());
                             new_scope
                         }
                     };

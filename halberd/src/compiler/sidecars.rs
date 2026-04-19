@@ -61,7 +61,7 @@ esx! {@ess; self;
     () {
         scope -> {}
         // pretty sure this is ok - https://old.reddit.com/r/rust/comments/rjhiod/is_it_safe_to_create_references_to_zerosized/hp3oqr1/
-        scope_mut -> { unsafe { &mut *(std::mem::align_of::<()>() as *mut ()) } }
+        scope_mut -> { unsafe { &mut *std::ptr::dangling_mut::<()>() } }
     }
     Option<ScopeId> {
         scope -> { self.0.scope }
@@ -74,9 +74,9 @@ esx! {@ess; self;
 }
 esx! {@est; self;
     () {
-        r#type -> { unsafe { & *(std::mem::align_of::<()>() as *mut ()) } }
+        r#type -> { unsafe { & *std::ptr::dangling_mut::<()>() } }
         // pretty sure this is ok - https://old.reddit.com/r/rust/comments/rjhiod/is_it_safe_to_create_references_to_zerosized/hp3oqr1/
-        type_mut -> { unsafe { &mut *(std::mem::align_of::<()>() as *mut ()) } }
+        type_mut -> { unsafe { &mut *std::ptr::dangling_mut::<()>() } }
     }
     Option<Type> {
         r#type -> { &self.0.r#type }
