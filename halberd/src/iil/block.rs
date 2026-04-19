@@ -243,3 +243,32 @@ impl Renumberable for BlockLocalRef {
         }
     }
 }
+
+/*
+impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal>
+where
+    VoidLocal: Renumberable,
+    ValuedLocal: Renumberable,
+    Terminal: Renumberable,
+{
+    fn push_all(&mut self, mut other: Self) {
+        let upcoming_new_indices = self.locals.len()..;
+        let renumbers: Vec<_> = upcoming_new_indices
+            .zip(other.locals())
+            .map(|(new_idx, (old_ref, _local))| {
+                (old_ref, BlockLocalRef { block: self.id, local: new_idx })
+            })
+            .collect();
+
+        let (locals, terminal) = other.into_parts();
+        for (n, mut local) in locals {
+            // TODO should probably just make a version of renumber that takes in a function? or a
+            //      list of renumbers? or a map?
+            for (from, to) in &renumbers {
+                local.renumber(*from, *to);
+            }
+            self.locals.push();
+        }
+    }
+}
+*/
