@@ -78,7 +78,7 @@ impl From<NamespaceItemFullyTyped> for NamespaceItemIILGeneration {
 }
 
 pub fn compile(
-    e: ast::File<'_, PhaseInitial>,
+    file: ast::File<'_, PhaseInitial>,
 ) -> Result<
     (
         ast::File<'_, PhaseFullyTyped>,
@@ -88,10 +88,10 @@ pub fn compile(
 > {
     let mut universe = scope::Universe::new();
 
-    let (e, universe) = scoping_phase::populate_scopes(e, universe)?;
-    let (e, universe) = typing_phase::populate_types(e, universe)?;
+    let (file, universe) = scoping_phase::populate_scopes(file, universe)?;
+    let (file, universe) = typing_phase::populate_types(file, universe)?;
 
-    Ok((e, universe))
+    Ok((file, universe))
 }
 
 pub fn foobar(
