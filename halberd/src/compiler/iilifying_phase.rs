@@ -37,6 +37,25 @@ pub(super) fn bar<'a>(
     }
 }
 
+impl fops::OpIAdd {
+    fn into_spv<
+        MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef,
+        MapTypes: Fn(types::Type) -> ok::IdResultType,
+    >(
+        self,
+        ret_id: ok::IdResult,
+        map_types: MapTypes,
+        map_refs: MapRefs,
+    ) -> crate::spv::instruction::OpIAdd {
+        crate::spv::instruction::OpIAdd {
+            ret_id,
+            ret_type: map_types(self.ret_type),
+            op0: map_refs(self.op0),
+            op1: map_refs(self.op1),
+        }
+    }
+}
+
 fn foo<'a>(
     function: ast::Function<'a, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
