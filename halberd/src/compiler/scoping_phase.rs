@@ -22,7 +22,7 @@ pub(super) fn populate_scopes<'a>(
     //       but i haven't written a map for the new API yet
 
     let mut e: ast::File<'a, PhasePartiallyScoped> = e.map_sidecars(&mut SidecarFns {
-        func: &mut |_, _| None,
+        func: &mut |_, ()| None,
         expr: &mut |_, car| car.with_scope_none(),
     });
 
@@ -36,7 +36,7 @@ pub(super) fn populate_scopes<'a>(
             scope @ None => {
                 let new_scope = universe.root_scope_mut().new_subscope();
                 // insert the function's args into its scope
-                for arg in data.args.iter() {
+                for arg in &data.args {
                     universe
                         .get_scope_mut(new_scope)
                         .insert(arg.name.inner.clone(), ());

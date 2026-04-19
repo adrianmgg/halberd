@@ -5,6 +5,15 @@
 
 // FIXME should probably turn this back on once we reach a 1.0
 #![allow(unused)]
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::too_many_lines,
+    clippy::inline_always,
+    clippy::unreadable_literal,
+    clippy::wildcard_imports,
+    clippy::default_trait_access
+)]
+#![deny(clippy::ignored_unit_patterns, clippy::semicolon_if_nothing_returned)]
 
 pub(crate) mod ast;
 pub(crate) mod compiler;
@@ -28,7 +37,7 @@ fn main() {
         let tokens = match dbg!(lexer::lexer().parse(&line).into_result()) {
             Ok(tokens) => tokens,
             Err(errs) => {
-                for err in errs.into_iter() {
+                for err in errs {
                     parser_error_to_report(err).eprint(&src);
                 }
                 continue;
@@ -38,7 +47,7 @@ fn main() {
         let file = match parser::file().parse(parser_input).into_result() {
             Ok(file) => file,
             Err(errs) => {
-                for err in errs.into_iter() {
+                for err in errs {
                     parser_error_to_report(err).eprint(&src);
                 }
                 continue;

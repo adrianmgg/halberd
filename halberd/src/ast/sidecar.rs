@@ -199,7 +199,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 value.validate_sidecars_into(fns, errors);
             }
             ExprData::Block(Spanned { inner: block, .. }) => {
-                for expr in block.exprs.iter() {
+                for expr in &block.exprs {
                     expr.validate_sidecars_into(fns, errors);
                 }
                 if let Some(last_expr) = &block.last {
@@ -216,28 +216,26 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
         &mut self,
         fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
     ) -> usize {
-        (if (fns.expr)(&self.data, &mut self.sidecar) {
-            1
-        } else {
-            0
-        }) + (match &mut self.data {
-            ExprData::LiteralInt(_) => 0,
-            ExprData::LiteralFloat(_) => 0,
-            ExprData::LiteralBool(_) => 0,
-            ExprData::InfixOp(lhs, _, rhs) =>
-                lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns),
-            ExprData::Var(_) => 0,
-            ExprData::Declaration { name: _, r#type: _, value } => value.modify_some_sidecars(fns),
-            ExprData::Block(b) =>
-                (b.exprs)
-                    .iter_mut()
-                    .map(|e| e.modify_some_sidecars(fns))
-                    .sum::<usize>()
-                    + (b.last)
-                        .as_mut()
+        usize::from((fns.expr)(&self.data, &mut self.sidecar))
+            + (match &mut self.data {
+                ExprData::LiteralInt(_)
+                | ExprData::LiteralFloat(_)
+                | ExprData::LiteralBool(_)
+                | ExprData::Var(_) => 0,
+                ExprData::InfixOp(lhs, _, rhs) =>
+                    lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns),
+                ExprData::Declaration { name: _, r#type: _, value } =>
+                    value.modify_some_sidecars(fns),
+                ExprData::Block(b) =>
+                    (b.exprs)
+                        .iter_mut()
                         .map(|e| e.modify_some_sidecars(fns))
-                        .unwrap_or_default(),
-        })
+                        .sum::<usize>()
+                        + (b.last)
+                            .as_mut()
+                            .map(|e| e.modify_some_sidecars(fns))
+                            .unwrap_or_default(),
+            })
     }
 
     fn modify_some_sidecars_2<
@@ -258,7 +256,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
     ) -> (usize, Ctx) {
         let (changed, ctx_here) = (fns.expr)(global, &self.data, &mut self.sidecar, ctxs);
 
-        let mut n_changes = if changed { 1 } else { 0 };
+        let mut n_changes = usize::from(changed);
         let mut ctx_final = ctx_here.clone();
         // ctx of most recently processed subexpression
         let mut ctx_subexpr = None;
@@ -294,14 +292,14 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 foo!(value);
             }
             ExprData::Block(b) => {
-                for expr in b.exprs.iter_mut() {
+                for expr in &mut b.exprs {
                     foo!(expr);
                 }
                 if let Some(expr) = b.last.as_mut() {
                     foo!(expr);
                 }
             }
-        };
+        }
 
         (n_changes, ctx_final)
     }
@@ -355,11 +353,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Function<'a, S> {
         &mut self,
         fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
     ) -> usize {
-        (if (fns.func)(&self.data, &mut self.sidecar) {
-            1
-        } else {
-            0
-        }) + self.data.body.modify_some_sidecars(fns)
+        usize::from((fns.func)(&self.data, &mut self.sidecar))
+            + self.data.body.modify_some_sidecars(fns)
     }
 
     fn modify_some_sidecars_2<
@@ -380,7 +375,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Function<'a, S> {
     ) -> (usize, Ctx) {
         let (changed, ctx_here) = (fns.func)(global, &self.data, &mut self.sidecar, ctxs);
 
-        let mut n_changes = if changed { 1 } else { 0 };
+        let mut n_changes = usize::from(changed);
         let mut ctx_final = ctx_here.clone();
 
         let (n, c) = self
@@ -439,7 +434,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for File<'a, S> {
         errors: &mut Vec<E>,
     ) {
         for functions in self.functions.values() {
-            for function in functions.iter() {
+            for function in functions {
                 function.validate_sidecars_into(fns, errors);
             }
         }

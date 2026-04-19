@@ -20,13 +20,13 @@ use crate::{
     util::{Either, matches_opt},
 };
 
-pub(super) fn bar<'a>(
-    file: ast::File<'a, PhaseIILGeneration>,
+pub(super) fn bar(
+    file: ast::File<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
 ) {
     let mut blockctx = block::Ctx::new();
-    for (name, functions) in file.functions.into_iter() {
-        for function in functions.into_iter() {
+    for (name, functions) in file.functions {
+        for function in functions {
             let f = foo(function, universe, &mut blockctx);
             println!("====================");
             dbg!(&f);
@@ -56,8 +56,8 @@ impl fops::OpIAdd {
     }
 }
 
-fn foo<'a>(
-    function: ast::Function<'a, PhaseIILGeneration>,
+fn foo(
+    function: ast::Function<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockctx: &mut block::Ctx,
 ) -> h::Function {
@@ -92,8 +92,8 @@ fn foo<'a>(
 
 /// inserts any intermediary things to the provided block,
 /// and returns the (not yet inserted) block item representing this top-level expr
-fn push_expr_to_block_mostly<'a>(
-    expr: ast::Expr<'a, PhaseIILGeneration>,
+fn push_expr_to_block_mostly(
+    expr: ast::Expr<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockbuilder: &mut block::BlockBuilder<h::BlockLocalVoid, h::BlockLocalExpr>,
     blockctx: &mut block::Ctx,
@@ -170,7 +170,7 @@ fn push_expr_to_block_mostly<'a>(
         }
         ast::ExprData::Block(Spanned { inner: ast_block, .. }) => {
             let x: h::Block = blockctx.new_block(|b, ctx| {
-                for ast_expr in ast_block.exprs.into_iter() {
+                for ast_expr in ast_block.exprs {
                     push_expr_to_block_mostly(ast_expr, universe, b, ctx);
                 }
                 ast_block.last.and_then(|terminal| {
@@ -239,7 +239,7 @@ fn flatten_into(
     let mut renumbers = Vec::<(block::BlockLocalRef, block::BlockLocalRef)>::new();
     let (locals, terminal) = block.into_parts();
     for (n, mut local) in locals {
-        for (from, to) in renumbers.iter() {
+        for (from, to) in &renumbers {
             local.renumber(*from, *to);
         }
         match local {

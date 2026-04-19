@@ -201,7 +201,7 @@ where
     Terminal: Renumberable,
 {
     fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
-        for local in self.locals.iter_mut() {
+        for local in &mut self.locals {
             local.renumber(from, to);
         }
         self.terminal.renumber(from, to);
@@ -220,7 +220,9 @@ impl<T> Renumberable for [T]
 where T: Renumberable
 {
     fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
-        self.iter_mut().for_each(|x| x.renumber(from, to));
+        for x in self.iter_mut() {
+            x.renumber(from, to);
+        }
     }
 }
 
@@ -228,7 +230,9 @@ impl<T> Renumberable for Option<T>
 where T: Renumberable
 {
     fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
-        self.iter_mut().for_each(|x| x.renumber(from, to));
+        for x in self.iter_mut() {
+            x.renumber(from, to);
+        }
     }
 }
 

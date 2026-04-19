@@ -27,7 +27,7 @@ pub(crate) fn populate_types<'a>(
         func: &mut |_, scope| scope,
         expr: &mut |_, car: ExprSidecar<ScopeId, ()>| car.with_type_none(),
     });
-    let mut universe = universe.map(|_| NamespaceItemPartiallyTyped::default());
+    let mut universe = universe.map(|()| NamespaceItemPartiallyTyped::default());
 
     // infer types
     e.iteratively_modify_sidecars_2(&mut universe, (), &SidecarFns {
@@ -52,7 +52,7 @@ pub(crate) fn populate_types<'a>(
                         let found = scope_bound.lookup_and_modify(
                             &arg.name,
                             |item: &mut NamespaceItemPartiallyTyped| {
-                                item.r#type = Some(arg.r#type.inner.clone())
+                                item.r#type = Some(arg.r#type.inner.clone());
                             },
                         );
                         assert!(found);
@@ -121,8 +121,8 @@ pub(crate) fn populate_types<'a>(
     Ok((e, universe))
 }
 
-pub(crate) fn infer_expr_type<'a>(
-    data: &ast::ExprData<'a, PhasePartiallyTyped>,
+pub(crate) fn infer_expr_type(
+    data: &ast::ExprData<'_, PhasePartiallyTyped>,
     scope: ScopeId,
     universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
 ) -> Option<types::Type> {

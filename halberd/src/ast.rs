@@ -35,11 +35,11 @@ pub(crate) enum ExprData<'a, S: Sidecars = PhaseInitial> {
     Block(Spanned<Block<'a, S>>),
 }
 
-impl<'a, S: Sidecars> Expr<'a, S> {
+impl<S: Sidecars> Expr<'_, S> {
     pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
 }
 
-impl<'a, S: Sidecars> ExprData<'a, S> {
+impl<S: Sidecars> ExprData<'_, S> {
     pub(crate) fn span(&self) -> chumsky::span::SimpleSpan {
         match self {
             ExprData::LiteralInt(Spanned { span, .. })
@@ -97,7 +97,7 @@ impl<'a> From<FunctionData<'a, PhaseInitial>> for Function<'a, PhaseInitial> {
     }
 }
 
-impl<'a, S: Sidecars> Function<'a, S> {
+impl<S: Sidecars> Function<'_, S> {
     pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
 }
 
@@ -110,7 +110,7 @@ pub(crate) struct FunctionData<'a, S: Sidecars = PhaseInitial> {
     pub(crate) body: Expr<'a, S>,
 }
 
-impl<'a, S: Sidecars> FunctionData<'a, S> {
+impl<S: Sidecars> FunctionData<'_, S> {
     pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.name.span }
 }
 
