@@ -12,7 +12,7 @@ use crate::{
     iil::{
         block::{self, Renumberable},
         f::{self, instruction as fops},
-        h::{self, instruction as hops},
+        h,
     },
     scope,
     spv::operand_kind as ok,
