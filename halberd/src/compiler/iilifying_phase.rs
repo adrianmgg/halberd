@@ -5,7 +5,10 @@ use chumsky::span::Spanned;
 use super::PhaseFullyTyped;
 use crate::{
     ast::{self, Sidecars},
-    compiler::{PhaseIILGeneration, sidecars::ExprSidecarS},
+    compiler::{
+        PhaseIILGeneration,
+        sidecars::{ExprSidecarS, ExprSidecarT},
+    },
     iil::{
         self, block,
         f::{self, instruction as fops},
@@ -13,7 +16,7 @@ use crate::{
     },
     scope,
     spv::operand_kind as ok,
-    types,
+    types::{self, prelude::ExtAnyType},
     util::matches_opt,
 };
 
@@ -63,8 +66,55 @@ fn push_expr_to_block_mostly<'a>(
         }) => block::BlockLocal::Valued(h::Constant::Float { r#type, value }.into()),
         ast::ExprData::LiteralBool(Spanned { inner: value, .. }) =>
             block::BlockLocal::Valued(h::Constant::Bool { value }.into()),
-        // TODO implement
-        ast::ExprData::InfixOp(lhs, op, rhs) => todo!(),
+        ast::ExprData::InfixOp(lhs, op, rhs) => {
+            let r#type = expr.sidecar.r#type();
+            let lhs_blk = {
+                let local = push_expr_to_block_mostly(*lhs, universe, blockbuilder, blockctx);
+                let local = matches_opt!(local, block::BlockLocal::Valued(v) => v).unwrap();
+                blockbuilder.push_valued_local(local)
+            };
+            let rhs_blk = {
+                let local = push_expr_to_block_mostly(*rhs, universe, blockbuilder, blockctx);
+                let local = matches_opt!(local, block::BlockLocal::Valued(v) => v).unwrap();
+                blockbuilder.push_valued_local(local)
+            };
+            let x = match op.inner {
+                ast::InfixOp::Add => match r#type.and_is_number().unwrap() {
+                    types::NumberKind::Integer(_) => f::OpExpr::OpIAdd(fops::OpIAdd {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                    types::NumberKind::Float(_) => f::OpExpr::OpFAdd(fops::OpFAdd {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                },
+                ast::InfixOp::Subtract => match r#type.and_is_number().unwrap() {
+                    types::NumberKind::Integer(_) => f::OpExpr::OpISub(fops::OpISub {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                    types::NumberKind::Float(_) => f::OpExpr::OpFSub(fops::OpFSub {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                },
+                ast::InfixOp::Multiply => todo!(),
+                ast::InfixOp::Divide => todo!(),
+                ast::InfixOp::DotProduct => todo!(),
+                ast::InfixOp::CrossProduct => todo!(),
+                ast::InfixOp::MatrixMultiply => todo!(),
+            };
+            block::BlockLocal::Valued(x)
+        }
         ast::ExprData::Block(Spanned { inner: ast_block, .. }) => {
             let x: h::Block = blockctx.new_block(|b, ctx| {
                 for ast_expr in ast_block.exprs.into_iter() {
