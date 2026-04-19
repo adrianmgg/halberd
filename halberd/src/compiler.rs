@@ -94,6 +94,17 @@ pub fn compile<'a>(
     Ok((e, universe))
 }
 
+pub fn foobar<'a>(
+    file: ast::File<'a, PhaseFullyTyped>,
+    universe: scope::Universe<NamespaceItemFullyTyped>,
+) {
+    let file: ast::File<'_, PhaseIILGeneration> = file
+        .map_sidecars(&mut ast::SidecarFns { expr: &mut |_, car| car, func: &mut |_, car| car });
+    let mut universe: scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem> =
+        universe.map(Into::into);
+    iilifying_phase::bar(file, &mut universe);
+}
+
 #[cfg(test)]
 mod tests {
     use std::{assert_matches, path::PathBuf};

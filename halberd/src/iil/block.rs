@@ -1,14 +1,33 @@
-use std::convert::Infallible;
+use std::{
+    convert::Infallible,
+    fmt::{Debug, Display},
+};
 
 use unwrap_infallible::UnwrapInfallible as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl Display for BlockId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { Display::fmt(&self.0, f) }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct BlockLocalRef {
     block: BlockId,
     local: usize,
+}
+
+impl Display for BlockLocalRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "%{}.{}", self.block, self.local)
+    }
+}
+
+impl Debug for BlockLocalRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("BlockLocalRef({self})"))
+    }
 }
 
 pub struct Ctx {
@@ -60,6 +79,31 @@ pub struct Block<VoidLocal, ValuedLocal, Terminal> {
     id: BlockId,
     locals: Vec<BlockLocal<VoidLocal, ValuedLocal>>,
     terminal: Terminal,
+}
+
+impl<VoidLocal, ValuedLocal, Terminal> Debug for Block<VoidLocal, ValuedLocal, Terminal>
+where
+    VoidLocal: Debug,
+    ValuedLocal: Debug,
+    Terminal: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("Block");
+        s.field("id", &self.id);
+        // s.field("locals", &self.locals);
+        for (i, local) in self.locals.iter().enumerate() {
+            match local {
+                BlockLocal::Void(local) => {
+                    s.field("_", local);
+                }
+                BlockLocal::Valued(local) => {
+                    let name = format!("{}", BlockLocalRef { block: self.id, local: i });
+                    s.field(&name, &local);
+                }
+            }
+        }
+        s.field("terminal", &self.terminal).finish()
+    }
 }
 
 pub enum BlockLocal<Void, Valued> {
