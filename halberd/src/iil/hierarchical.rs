@@ -2,7 +2,10 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 
 use crate::{
-    iil::{self, block},
+    iil::{
+        self,
+        block::{self, Renumberable},
+    },
     spv::operand_kind,
     types,
     util::impl_conversion_enum_variant,
@@ -37,6 +40,17 @@ pub enum BlockLocalExpr {
 }
 impl_conversion_enum_variant!(BlockLocalExpr::{Op(iil::flat::OpExpr), Block(Box<Block>), Constant(Constant), Ref(block::BlockLocalRef)});
 
+impl Renumberable for BlockLocalExpr {
+    fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) {
+        match self {
+            BlockLocalExpr::Op(op_expr) => op_expr.renumber(from, to),
+            BlockLocalExpr::Block(block) => block.renumber(from, to),
+            BlockLocalExpr::Constant(constant) => {}
+            BlockLocalExpr::Ref(r) => r.renumber(from, to),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum FlatBlockLocalExpr {
     Op(iil::flat::OpExpr),
@@ -48,7 +62,7 @@ impl_conversion_enum_variant!(FlatBlockLocalExpr::{Op(iil::flat::OpExpr), Consta
 pub type BlockLocalVoid = iil::flat::OpVoid;
 pub type BlockTerminal = BlockLocalExpr;
 pub type Block = block::Block<BlockLocalVoid, BlockLocalExpr, Option<BlockTerminal>>;
-pub type FlatBlock = block::Block<BlockLocalVoid, FlatBlockLocalExpr, Option<BlockTerminal>>;
+pub type FlatBlock = block::Block<BlockLocalVoid, FlatBlockLocalExpr, Option<FlatBlockLocalExpr>>;
 
 #[derive(Debug)]
 pub struct Function {

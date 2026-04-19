@@ -1,6 +1,7 @@
 use std::{
     convert::Infallible,
     fmt::{Debug, Display},
+    ops::DerefMut,
 };
 
 use unwrap_infallible::UnwrapInfallible as _;
@@ -84,6 +85,8 @@ pub struct Block<VoidLocal, ValuedLocal, Terminal> {
 impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal> {
     pub fn id(&self) -> BlockId { self.id }
 
+    pub fn terminal(&self) -> &Terminal { &self.terminal }
+
     pub fn locals(
         &self,
     ) -> impl Iterator<Item = (BlockLocalRef, &BlockLocal<VoidLocal, ValuedLocal>)> {
@@ -91,6 +94,21 @@ impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal> {
             .iter()
             .enumerate()
             .map(|(i, local)| (BlockLocalRef { block: self.id, local: i }, local))
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        impl Iterator<Item = (BlockLocalRef, BlockLocal<VoidLocal, ValuedLocal>)>,
+        Terminal,
+    ) {
+        let id = self.id;
+        let locals = self
+            .locals
+            .into_iter()
+            .enumerate()
+            .map(move |(i, local)| (BlockLocalRef { block: id, local: i }, local));
+        (locals, self.terminal)
     }
 
     pub fn map<NewVoidLocal, NewValuedLocal, NewTerminal, MapVoid, MapValued, MapTerminal>(
@@ -143,6 +161,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub enum BlockLocal<Void, Valued> {
     Void(Void),
     Valued(Valued),
@@ -155,5 +174,68 @@ impl<Void, Valued> BlockBuilder<Void, Valued> {
         let new_local_idx = self.locals.len();
         self.locals.push(BlockLocal::Valued(local));
         BlockLocalRef { block: self.id, local: new_local_idx }
+    }
+}
+
+pub trait Renumberable {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef);
+}
+
+impl<Void, Valued> Renumberable for BlockLocal<Void, Valued>
+where
+    Void: Renumberable,
+    Valued: Renumberable,
+{
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+        match self {
+            BlockLocal::Void(void) => void.renumber(from, to),
+            BlockLocal::Valued(valued) => valued.renumber(from, to),
+        }
+    }
+}
+
+impl<Void, Valued, Terminal> Renumberable for Block<Void, Valued, Terminal>
+where
+    Void: Renumberable,
+    Valued: Renumberable,
+    Terminal: Renumberable,
+{
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+        for local in self.locals.iter_mut() {
+            local.renumber(from, to);
+        }
+        self.terminal.renumber(from, to);
+    }
+}
+
+impl<T> Renumberable for Vec<T>
+where T: Renumberable
+{
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+        self.as_mut_slice().renumber(from, to);
+    }
+}
+
+impl<T> Renumberable for [T]
+where T: Renumberable
+{
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+        self.iter_mut().for_each(|x| x.renumber(from, to));
+    }
+}
+
+impl<T> Renumberable for Option<T>
+where T: Renumberable
+{
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+        self.iter_mut().for_each(|x| x.renumber(from, to));
+    }
+}
+
+impl Renumberable for BlockLocalRef {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+        if *self == from {
+            *self = to;
+        }
     }
 }

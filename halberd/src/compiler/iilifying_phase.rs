@@ -10,7 +10,7 @@ use crate::{
         sidecars::{ExprSidecarS, ExprSidecarT},
     },
     iil::{
-        block,
+        block::{self, Renumberable},
         f::{self, instruction as fops},
         h::{self, instruction as hops},
     },
@@ -28,7 +28,11 @@ pub(super) fn bar<'a>(
     for (name, functions) in file.functions.into_iter() {
         for function in functions.into_iter() {
             let f = foo(function, universe, &mut blockctx);
+            println!("====================");
             dbg!(&f);
+            println!(">>>>>>>>>>>>>>>>>>>>");
+            let flat_body = flatten(f.body, &mut blockctx);
+            dbg!(&flat_body);
         }
     }
 }
@@ -205,25 +209,48 @@ fn push_expr_to_block_mostly<'a>(
     }
 }
 
-fn flatten(block: h::Block) -> h::FlatBlock {
-    let is_already_flat = !block.locals().any(|(_, local)| {
-        matches!(
-            local,
-            block::BlockLocal::Valued(h::BlockLocalExpr::Block(_))
-        )
-    });
-    if is_already_flat {
-        block.map(
-            std::convert::identity,
-            |valued| match valued {
-                h::BlockLocalExpr::Block(_) => unreachable!(),
-                h::BlockLocalExpr::Op(o) => h::FlatBlockLocalExpr::Op(o),
-                h::BlockLocalExpr::Constant(c) => h::FlatBlockLocalExpr::Constant(c),
-                h::BlockLocalExpr::Ref(r) => h::FlatBlockLocalExpr::Ref(r),
+pub(super) fn flatten(block: h::Block, blockctx: &mut block::Ctx) -> h::FlatBlock {
+    blockctx.new_block(|blockbuilder, blockctx| flatten_into(block, blockbuilder))
+}
+
+fn flatten_into(
+    block: h::Block,
+    blockbuilder: &mut block::BlockBuilder<f::OpVoid, h::FlatBlockLocalExpr>,
+) -> Option<h::FlatBlockLocalExpr> {
+    let mut renumbers = Vec::<(block::BlockLocalRef, block::BlockLocalRef)>::new();
+    let (locals, terminal) = block.into_parts();
+    for (n, mut local) in locals {
+        for (from, to) in renumbers.iter() {
+            local.renumber(*from, *to);
+        }
+        match local {
+            block::BlockLocal::Void(void) => {
+                blockbuilder.push_void_local(void);
+            }
+            block::BlockLocal::Valued(valued) => match valued {
+                h::BlockLocalExpr::Op(o) => renumbers.push((
+                    n,
+                    blockbuilder.push_valued_local(h::FlatBlockLocalExpr::Op(o)),
+                )),
+                h::BlockLocalExpr::Constant(c) => renumbers.push((
+                    n,
+                    blockbuilder.push_valued_local(h::FlatBlockLocalExpr::Constant(c)),
+                )),
+                h::BlockLocalExpr::Ref(r) => renumbers.push((
+                    n,
+                    blockbuilder.push_valued_local(h::FlatBlockLocalExpr::Ref(r)),
+                )),
+                h::BlockLocalExpr::Block(b) =>
+                    if let Some(terminal) = flatten_into(*b, blockbuilder) {
+                        renumbers.push((n, blockbuilder.push_valued_local(terminal)));
+                    },
             },
-            std::convert::identity,
-        )
-    } else {
-        todo!()
+        }
     }
+    terminal.and_then(|e| match e {
+        h::BlockLocalExpr::Op(o) => Some(h::FlatBlockLocalExpr::Op(o)),
+        h::BlockLocalExpr::Constant(c) => Some(h::FlatBlockLocalExpr::Constant(c)),
+        h::BlockLocalExpr::Ref(r) => Some(h::FlatBlockLocalExpr::Ref(r)),
+        h::BlockLocalExpr::Block(b) => flatten_into(*b, blockbuilder),
+    })
 }

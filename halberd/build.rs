@@ -29,16 +29,19 @@ fn main() -> eyre::Result<()> {
     mods.iil_hierarchical()
         .vis("pub")
         .scope()
-        .raw("use crate::iil::{self, h::{FlattenableToBlock, Block as HBlock}};");
-    mods.iil_flat().vis("pub").scope().raw("");
+        .raw("use crate::iil::{self, h::{FlattenableToBlock, Block as HBlock}, block};");
+    mods.iil_flat()
+        .vis("pub")
+        .scope()
+        .raw("use crate::iil::block;");
     mods.iil_h_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::{spv::operand_kind as ok, iil, types};");
+        .raw("use crate::{spv::operand_kind as ok, iil::{self, block}, types};");
     mods.iil_f_instructions()
         .vis("pub")
         .scope()
-        .raw("use crate::{spv::operand_kind as ok, iil, types};");
+        .raw("use crate::{spv::operand_kind as ok, iil::{self, block}, types};");
     mods.spv().vis("pub").attr(allows);
     mods.spv_operandkind().vis("pub");
     mods.spv_instruction()
@@ -152,6 +155,46 @@ fn codegen_instructions(
                 .new_variant(&ii.name)
                 .tuple(format!("instruction::{}", ii.name));
         });
+
+    let f_op_expr_renumberable = (mods.iil_flat())
+        .new_impl("OpExpr")
+        .impl_trait("block::Renumberable");
+    let f_op_expr_renumber = f_op_expr_renumberable
+        .new_fn("renumber")
+        .arg_mut_self()
+        .arg("from", "block::BlockLocalRef")
+        .arg("to", "block::BlockLocalRef");
+    f_op_expr_renumber.line("match self {");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
+        .for_each(|ii| {
+            f_op_expr_renumber.line(format!(
+                "Self::{name}(o) => o.renumber(from, to),",
+                name = ii.name
+            ));
+        });
+    f_op_expr_renumber.line("}");
+
+    let f_op_void_renumberable = (mods.iil_flat())
+        .new_impl("OpVoid")
+        .impl_trait("block::Renumberable");
+    let f_op_void_renumber = f_op_void_renumberable
+        .new_fn("renumber")
+        .arg_mut_self()
+        .arg("from", "block::BlockLocalRef")
+        .arg("to", "block::BlockLocalRef");
+    f_op_void_renumber.line("match self {");
+    instruction_infos
+        .iter()
+        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
+        .for_each(|ii| {
+            f_op_void_renumber.line(format!(
+                "Self::{name}(o) => o.renumber(from, to),",
+                name = ii.name
+            ));
+        });
+    f_op_void_renumber.line("}");
 
     /*
     let h_op_expr_ftb = (mods.iil_hierarchical())
@@ -414,6 +457,21 @@ fn codegen_instruction<'a>(
                 _ => {}
             }
             fiil_struct.new_field(&operand.name, op_type).vis("pub");
+        }
+
+        let renumberable = mods
+            .iil_f_instructions()
+            .new_impl(&name)
+            .impl_trait("block::Renumberable");
+        let renumber = renumberable
+            .new_fn("renumber")
+            .arg_mut_self()
+            .arg("from", "block::BlockLocalRef")
+            .arg("to", "block::BlockLocalRef");
+        for operand in &cg_operands.other_operands {
+            if operand.is_expr {
+                renumber.line(format!("self.{}.renumber(from, to);", &operand.name));
+            }
         }
     }
 
