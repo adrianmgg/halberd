@@ -217,10 +217,12 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
         let vaguely_ident_shaped = text::unicode::ident();
 
-        // need to also ensure that our types are a full ident in and of themselves
-        // TODO double check this enforces end too,
-        //      e.g. won't parse 'i32foo' to [Type(i32), Ident(foo)]
-        let r#type = r#type().and_is(vaguely_ident_shaped).map(Token::Type);
+        let r#type = r#type()
+            // ensure that there's no stray ident-like characters at the end of this thing that
+            // looks like a type
+            // (`i32foobar` is just a single ident of its own, not a type followed by an ident)
+            .then_ignore(vaguely_ident_shaped.not())
+            .map(Token::Type);
 
         let ident = vaguely_ident_shaped
             .map(|ident| match ident {
@@ -308,7 +310,10 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
 #[cfg(test)]
 mod test_lex {
+    use std::assert_matches;
+
     use chumsky::{Parser as _, span::Spanned};
+    use rstest::rstest;
 
     use super::{Token, lexer};
     use crate::{lexer::Keyword, types};
@@ -381,6 +386,18 @@ mod test_lex {
             column_count: 34,
         }.into()
     );
+    // should lex as a single token [Ident(i32foo)], not as [Type(i32), Ident(foo)]
+    lex_test_single!(ident_with_type_prefix, "i32foo", Token::Ident(_));
+    lex_test_single!(ident_with_type_suffix, "fooi32", Token::Ident(_));
+    lex_test_single!(ident_with_kwd_prefix, "iffoo", Token::Ident(_));
+    lex_test_single!(ident_with_kwd_suffix, "fooif", Token::Ident(_));
+
+    #[rstest]
+    #[case::unmatched_paren_open("(")]
+    #[case::unmatched_paren_close(")")]
+    fn test_lex_fails(#[case] s: &'_ str) {
+        assert_matches!(lexer().parse(s).into_result(), Err(_));
+    }
 }
 
 fn int_parsed<'src, T>(radix: u32) -> impl Parser<'src, &'src str, T, LexExtra<'src>> + Copy

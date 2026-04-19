@@ -611,7 +611,6 @@ mod spv_grammar {
     #[derive(Debug, Deserialize)]
     pub struct Instruction {
         pub opname: String,
-        // TODO double check this is a u32
         pub opcode: u32,
         pub operands: Option<Vec<Operand>>,
         pub capabilities: Option<Vec<String>>,
