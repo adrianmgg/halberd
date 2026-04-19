@@ -5,19 +5,20 @@ use crate::{
     types,
 };
 
-pub trait IntoSPVExpr {
+pub trait IilOpExpr {
     fn into_spv_expr<
         MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef,
         MapTypes: Fn(types::Type) -> ok::IdResultType,
     >(
         self,
-        ret_id: ok::IdResult,
         map_refs: MapRefs,
         map_types: MapTypes,
     ) -> impl spv::Instruction;
+
+    fn ret_type(&self) -> &types::Type;
 }
 
-pub trait IntoSPVVoid {
+pub trait IilOpVoid {
     fn into_spv_void<MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef>(
         self,
         map_refs: MapRefs,

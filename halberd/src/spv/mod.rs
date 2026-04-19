@@ -1,3 +1,5 @@
+pub use crate::generated::spv::{OpRetTyped, OpRetUntyped, OpVoid};
+
 pub trait HasCapabilities {
     fn capabilities(&self) -> enumset::EnumSet<operand_kind::Capability>;
 }
@@ -20,6 +22,10 @@ pub mod operand_kind {
     impl From<BigInt> for LiteralInteger {
         fn from(value: BigInt) -> Self { Self { value } }
     }
+    impl_conversion_2_hop!(u32 => BigInt => LiteralInteger);
+    impl_conversion_2_hop!(u64 => BigInt => LiteralInteger);
+    impl_conversion_2_hop!(i32 => BigInt => LiteralInteger);
+    impl_conversion_2_hop!(i64 => BigInt => LiteralInteger);
 
     #[derive(Debug)]
     pub struct LiteralFloat {
