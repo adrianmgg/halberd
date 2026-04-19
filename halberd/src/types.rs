@@ -228,9 +228,11 @@ pub mod prelude {
         ExtAnyType(&'a Type) {
             and_is_vector -> &'a Vector = t => { matches_opt!(t, Type::Concrete(Concrete::Vector(v)) => v) }
             and_is_matrix -> &'a Matrix = t => { matches_opt!(t, Type::Concrete(Concrete::Matrix(m)) => m) }
+            and_is_number -> &'a NumberKind = t => { matches_opt!(t, Type::Concrete(Concrete::Number(n)) => n) }
             (&'a Option<Type>) {
                 and_is_vector -> &'a Vector = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Vector(v))) => v) }
                 and_is_matrix -> &'a Matrix = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Matrix(m))) => m) }
+                and_is_number -> &'a NumberKind = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Number(n))) => n) }
             }
         };
         ExtVector(&'a Vector) {
