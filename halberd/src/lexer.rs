@@ -429,7 +429,7 @@ fn number_kind<'src>() -> impl Parser<'src, &'src str, types::NumberKind, LexExt
 /// WARNING: this parser on its own will accept a type name which is part of an identifier, so
 ///          needs to be chained with other parsers to be fully correct in the context of the
 ///          overall lexer.
-fn r#type<'src>() -> impl Parser<'src, &'src str, types::Type, LexExtra<'src>> + Clone {
+pub(crate) fn r#type<'src>() -> impl Parser<'src, &'src str, types::Type, LexExtra<'src>> + Clone {
     let n = int_parsed::<u32>(10);
     let vector_suffix = just('v').ignore_then(n);
     let matrix_suffix = just('m').ignore_then(n.then_ignore(just('x')).then(n));

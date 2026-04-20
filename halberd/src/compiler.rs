@@ -1,5 +1,6 @@
 use crate::{
     ast::{self, Sidecarred, Sidecars},
+    iil::block,
     scope::{self, ScopeId},
     types::{self, prelude::*},
 };
@@ -7,6 +8,7 @@ use crate::{
 mod iilifying_phase;
 mod scoping_phase;
 mod sidecars;
+mod spvifying_phase;
 mod typing_phase;
 
 pub(crate) use sidecars::ExprSidecar;
@@ -98,11 +100,12 @@ pub fn foobar(
     file: ast::File<'_, PhaseFullyTyped>,
     universe: scope::Universe<NamespaceItemFullyTyped>,
 ) {
+    let mut blockctx = block::Ctx::new();
     let file: ast::File<'_, PhaseIILGeneration> = file
         .map_sidecars(&mut ast::SidecarFns { expr: &mut |_, car| car, func: &mut |_, car| car });
     let mut universe: scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem> =
         universe.map(Into::into);
-    iilifying_phase::process_file(file, &mut universe);
+    iilifying_phase::process_file(file, &mut universe, &mut blockctx);
 }
 
 #[cfg(test)]
