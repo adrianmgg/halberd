@@ -25,21 +25,13 @@ fn main() -> eyre::Result<()> {
     let mut mods = Modules(codegen::Scope::new());
 
     let allows = "allow(unused, non_camel_case_types, non_upper_case_globals, clippy::upper_case_acronyms, clippy::enum_variant_names, clippy::doc_markdown, clippy::wildcard_imports)";
+    let prelude = "use crate::{spv::{self, operand_kind as ok}, iil::{self, block}, types};";
     mods.iil().vis("pub").attr(allows);
-    mods.iil_flat()
-        .vis("pub")
-        .scope()
-        .raw("use crate::iil::block;");
-    mods.iil_f_instructions()
-        .vis("pub")
-        .scope()
-        .raw("use crate::{spv::{self, operand_kind as ok}, iil::{self, block}, types};");
+    mods.iil_flat().vis("pub").scope().raw(prelude);
+    mods.iil_f_instructions().vis("pub").scope().raw(prelude);
     mods.spv().vis("pub").attr(allows);
     mods.spv_operandkind().vis("pub");
-    mods.spv_instruction()
-        .vis("pub")
-        .scope()
-        .raw("use crate::spv::operand_kind as ok;");
+    mods.spv_instruction().vis("pub").scope().raw(prelude);
 
     // pull in the full namespace so we can define things manually there and have the
     // codegen'd structs still see them
@@ -115,14 +107,25 @@ fn codegen_instructions(
         .collect();
 
     // spv instruction enums
-    for (spv_enum_name, f_enum_name, irk) in [
-        ("OpVoid", "OpVoid", InstructionRetKind::Void),
+    for (spv_enum_name, f_enum_name, f_op_trait, irk) in [
+        (
+            "OpVoid",
+            "OpVoid",
+            "iil::f::IilOpVoid",
+            InstructionRetKind::Void,
+        ),
         (
             "OpRetUntyped",
             "OpExprUntyped",
+            "iil::f::IilOpExprUntyped",
             InstructionRetKind::RetUntyped,
         ),
-        ("OpRetTyped", "OpExpr", InstructionRetKind::RetTyped),
+        (
+            "OpRetTyped",
+            "OpExpr",
+            "iil::f::IilOpExpr",
+            InstructionRetKind::RetTyped,
+        ),
     ] {
         let spv_enum = mods.spv().new_enum(spv_enum_name).vis("pub");
         for inst in &instruction_infos {
@@ -191,6 +194,62 @@ fn codegen_instructions(
                 ));
             });
         f_op_enum_renumber.line("}");
+
+        let f_op_enum_impl = (mods.iil_flat())
+            .new_impl(f_enum_name)
+            .impl_trait(f_op_trait);
+        let f_op_enum_impl_into = f_op_enum_impl
+            .new_fn(match irk {
+                InstructionRetKind::RetTyped => "into_spv_expr",
+                InstructionRetKind::RetUntyped => "into_spv_retuntyped",
+                InstructionRetKind::Void => "into_spv_void",
+            })
+            .generic("MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef");
+        if matches!(irk, InstructionRetKind::RetTyped) {
+            f_op_enum_impl_into.generic("MapTypes: Fn(types::Type) -> ok::IdResultType");
+        }
+        f_op_enum_impl_into.arg_self().arg("map_refs", "MapRefs");
+        if matches!(irk, InstructionRetKind::RetTyped) {
+            f_op_enum_impl_into.arg("map_types", "MapTypes");
+        }
+        f_op_enum_impl_into.ret(format!("spv::{spv_enum_name}"));
+        let argstr = match irk {
+            InstructionRetKind::RetTyped => "map_refs, map_types",
+            InstructionRetKind::RetUntyped => "map_refs",
+            InstructionRetKind::Void => "map_refs",
+        };
+        let intospvfn = match irk {
+            InstructionRetKind::RetUntyped => "into_spv_retuntyped",
+            InstructionRetKind::RetTyped => "into_spv_expr",
+            InstructionRetKind::Void => "into_spv_void",
+        };
+        f_op_enum_impl_into.line("match self {");
+        instruction_infos
+            .iter()
+            .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+            .for_each(|ii| {
+                f_op_enum_impl_into.line(format!(
+                    "Self::{name}(x) => x.{intospvfn}({argstr}),",
+                    name = ii.name
+                ));
+            });
+        f_op_enum_impl_into.line("}");
+
+        if matches!(irk, InstructionRetKind::RetTyped) {
+            let f_op_enum_impl_rt = f_op_enum_impl
+                .new_fn("ret_type")
+                .arg_ref_self()
+                .ret("&types::Type");
+            f_op_enum_impl_rt.line("match self {");
+            instruction_infos
+                .iter()
+                .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+                .for_each(|ii| {
+                    f_op_enum_impl_rt
+                        .line(format!("Self::{name}(x) => x.ret_type(),", name = ii.name));
+                });
+            f_op_enum_impl_rt.line("}");
+        }
     }
 }
 
@@ -344,72 +403,71 @@ fn codegen_instruction<'a>(
         }
 
         // impl iilop
-        if matches!(
-            cg_operands.ret_kind,
-            InstructionRetKind::Void | InstructionRetKind::RetTyped
-        ) {
-            let impl_iil_op_x = mods.iil_f_instructions().new_impl(&name);
-            impl_iil_op_x.impl_trait(match cg_operands.ret_kind {
-                InstructionRetKind::RetUntyped => unreachable!(),
-                InstructionRetKind::RetTyped => "iil::flat::IilOpExpr",
-                InstructionRetKind::Void => "iil::flat::IilOpVoid",
-            });
+        let impl_iil_op_x = mods.iil_f_instructions().new_impl(&name);
+        impl_iil_op_x.impl_trait(match cg_operands.ret_kind {
+            InstructionRetKind::RetUntyped => "iil::flat::IilOpExprUntyped",
+            InstructionRetKind::RetTyped => "iil::flat::IilOpExpr",
+            InstructionRetKind::Void => "iil::flat::IilOpVoid",
+        });
 
-            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
-                impl_iil_op_x
-                    .new_fn("ret_type")
-                    .arg_ref_self()
-                    .ret("&types::Type")
-                    .line("&self.ret_type");
-            }
-
-            let into_spv_fn = impl_iil_op_x.new_fn(match cg_operands.ret_kind {
-                InstructionRetKind::RetUntyped => unreachable!(),
-                InstructionRetKind::RetTyped => "into_spv_expr",
-                InstructionRetKind::Void => "into_spv_void",
-            });
-            into_spv_fn.generic("MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef");
-            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
-                into_spv_fn.generic("MapTypes: Fn(types::Type) -> ok::IdResultType");
-            }
-            into_spv_fn.arg_self();
-            into_spv_fn.arg("map_refs", "MapRefs");
-            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
-                into_spv_fn.arg("map_types", "MapTypes");
-            }
-            into_spv_fn.ret("impl spv::Instruction");
-            into_spv_fn.line(format!("spv::instruction::{name} {{"));
-            if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
-                into_spv_fn.line("    ret_type: map_types(self.ret_type),");
-            }
-            for operand in &cg_operands.other_operands {
-                if operand.is_expr {
-                    match operand.raw.quantifier {
-                        Some(spv_grammar::Quantifier::ZeroOrOne) => {
-                            into_spv_fn.line(format!(
-                                "    {name}: self.{name}.map(&map_refs),",
-                                name = &operand.name
-                            ));
-                        }
-                        Some(spv_grammar::Quantifier::ZeroOrMore) => {
-                            into_spv_fn.line(format!(
-                                "    {name}: self.{name}.into_iter().map(map_refs).collect(),",
-                                name = &operand.name
-                            ));
-                        }
-                        None => {
-                            into_spv_fn.line(format!(
-                                "    {name}: map_refs(self.{name}),",
-                                name = &operand.name
-                            ));
-                        }
-                    }
-                } else {
-                    into_spv_fn.line(format!("    {name}: self.{name},", name = &operand.name));
-                }
-            }
-            into_spv_fn.line("}");
+        if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+            impl_iil_op_x
+                .new_fn("ret_type")
+                .arg_ref_self()
+                .ret("&types::Type")
+                .line("&self.ret_type");
         }
+
+        let into_spv_fn = impl_iil_op_x.new_fn(match cg_operands.ret_kind {
+            InstructionRetKind::RetUntyped => "into_spv_retuntyped",
+            InstructionRetKind::RetTyped => "into_spv_expr",
+            InstructionRetKind::Void => "into_spv_void",
+        });
+        into_spv_fn.generic("MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef");
+        if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+            into_spv_fn.generic("MapTypes: Fn(types::Type) -> ok::IdResultType");
+        }
+        into_spv_fn.arg_self();
+        into_spv_fn.arg("map_refs", "MapRefs");
+        if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+            into_spv_fn.arg("map_types", "MapTypes");
+        }
+        into_spv_fn.ret(match cg_operands.ret_kind {
+            InstructionRetKind::RetUntyped => "spv::OpRetUntyped",
+            InstructionRetKind::RetTyped => "spv::OpRetTyped",
+            InstructionRetKind::Void => "spv::OpVoid",
+        });
+        into_spv_fn.line(format!("spv::instruction::{name} {{"));
+        if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+            into_spv_fn.line("    ret_type: map_types(self.ret_type),");
+        }
+        for operand in &cg_operands.other_operands {
+            if operand.is_expr {
+                match operand.raw.quantifier {
+                    Some(spv_grammar::Quantifier::ZeroOrOne) => {
+                        into_spv_fn.line(format!(
+                            "    {name}: self.{name}.map(&map_refs),",
+                            name = &operand.name
+                        ));
+                    }
+                    Some(spv_grammar::Quantifier::ZeroOrMore) => {
+                        into_spv_fn.line(format!(
+                            "    {name}: self.{name}.into_iter().map(map_refs).collect(),",
+                            name = &operand.name
+                        ));
+                    }
+                    None => {
+                        into_spv_fn.line(format!(
+                            "    {name}: map_refs(self.{name}),",
+                            name = &operand.name
+                        ));
+                    }
+                }
+            } else {
+                into_spv_fn.line(format!("    {name}: self.{name},", name = &operand.name));
+            }
+        }
+        into_spv_fn.line("}.into()");
     }
 
     CodegennedInstructionInfo {

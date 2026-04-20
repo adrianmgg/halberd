@@ -1,4 +1,4 @@
-use std::assert_matches;
+use std::{assert_matches, convert::identity};
 
 use chumsky::span::Spanned;
 
@@ -12,12 +12,13 @@ use crate::{
     iil::{
         block::{self, Renumberable},
         f::{self, instruction as fops},
+        flat::IilOpExpr,
         h,
     },
     scope,
     spv::operand_kind as ok,
     types::{self, prelude::ExtAnyType},
-    util::{Either, matches_opt},
+    util::{Either, Never, matches_opt},
 };
 
 pub(super) fn process_file(
@@ -25,16 +26,44 @@ pub(super) fn process_file(
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockctx: &mut block::Ctx,
 ) {
-    for (name, functions) in file.functions {
-        for function in functions {
-            let f = process_function(function, universe, blockctx);
-            println!("====================");
-            dbg!(&f);
-            println!(">>>>>>>>>>>>>>>>>>>>");
-            let flat_body = flatten(f.body, blockctx);
-            dbg!(&flat_body);
+    // insert each (name,function) sig in a block first, so we have block refs with which to refer
+    // to all functions regardless of upcoming processing order.
+    let forward_fns: block::Block<Never, _, ()> = blockctx.new_block(|blockbuilder, blockctx| {
+        for (name, functions) in file.functions {
+            for function in functions {
+                // FIXME once we get support for calling functions (lol) need to insert this block
+                //       ref in the namespace in the proper spot
+                blockbuilder.push_valued_local((name.clone(), function));
+            }
         }
-    }
+    });
+
+    let fns = forward_fns.map_mut(
+        identity,
+        |(_, function)| process_function(function, universe, blockctx),
+        identity,
+    );
+
+    let fns = fns.map_mut(
+        identity,
+        |func| h::FlatFunction {
+            control: func.control,
+            r#type: func.r#type,
+            body: flatten(func.body, blockctx),
+        },
+        identity,
+    );
+
+    let all_types_needed = fns
+        .locals_valued_only()
+        .flat_map(|(_, func)| func.body.locals())
+        .filter_map(|(_, op)| match op {
+            block::BlockLocal::Void(op_void) => None,
+            block::BlockLocal::Valued(expr) => match expr {
+                h::FlatBlockLocalExpr::Constant(_) | h::FlatBlockLocalExpr::Ref(_) => None,
+                h::FlatBlockLocalExpr::Op(op_expr) => Some(op_expr.ret_type()),
+            },
+        });
 }
 
 fn process_function(
@@ -213,6 +242,7 @@ pub(super) fn flatten(block: h::Block, blockctx: &mut block::Ctx) -> h::FlatBloc
     blockctx.new_block(|blockbuilder, blockctx| flatten_into(block, blockbuilder))
 }
 
+// FIXME probably some cases with intra-block forward refs which this doesn't handle properly...
 fn flatten_into(
     block: h::Block,
     blockbuilder: &mut block::BlockBuilder<f::OpVoid, h::FlatBlockLocalExpr>,

@@ -13,7 +13,7 @@ pub trait IilOpExpr {
         self,
         map_refs: MapRefs,
         map_types: MapTypes,
-    ) -> impl spv::Instruction;
+    ) -> spv::OpRetTyped;
 
     fn ret_type(&self) -> &types::Type;
 }
@@ -22,7 +22,14 @@ pub trait IilOpVoid {
     fn into_spv_void<MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef>(
         self,
         map_refs: MapRefs,
-    ) -> impl spv::Instruction;
+    ) -> spv::OpVoid;
+}
+
+pub trait IilOpExprUntyped {
+    fn into_spv_retuntyped<MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef>(
+        self,
+        map_refs: MapRefs,
+    ) -> spv::OpRetUntyped;
 }
 
 pub mod instruction {

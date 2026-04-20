@@ -95,3 +95,6 @@ pub(crate) enum Either<L, R> {
     Left(L),
     Right(R),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Never {}
