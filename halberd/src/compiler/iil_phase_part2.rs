@@ -9,7 +9,7 @@ use crate::{
 
 // FIXME no longer spvifying... move.
 
-fn types_to_asm(
+pub(crate) fn types_to_asm(
     mut types_to_build: HashSet<types::Type>,
     blockctx: &mut block::Ctx,
 ) -> block::Block<(), crate::iil::flat::OpExprUntyped, ()> {

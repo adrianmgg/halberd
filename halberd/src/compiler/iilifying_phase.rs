@@ -83,6 +83,21 @@ fn process_function(
             result: Box::new(function.data.return_type.inner.clone()),
         },
         body: blockctx.new_block(|blockbuilder, blockctx| {
+            // add our args to the block
+            for arg in &function.data.args {
+                let r#ref = blockbuilder.push_valued_local(h::BlockLocalExpr::Op(
+                    f::OpExpr::OpFunctionParameter(fops::OpFunctionParameter {
+                        ret_type: arg.r#type.inner.clone(),
+                    }),
+                ));
+                let mut scope = universe.get_scope_mut(function.sidecar);
+                assert!(scope.lookup_and_modify(&arg.name, |info| {
+                    assert_matches!(info.block_ref, None);
+                    info.block_ref = Some(r#ref);
+                }));
+            }
+
+            // add our body to the block
             let x = push_expr_to_block_mostly(function.data.body, universe, blockbuilder, blockctx);
             match x {
                 block::BlockLocal::Void(void) => {
