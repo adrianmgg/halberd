@@ -115,126 +115,83 @@ fn codegen_instructions(
         .collect();
 
     // spv instruction enums
-    for (enum_name, irk) in [
-        ("OpVoid", InstructionRetKind::Void),
-        ("OpRetUntyped", InstructionRetKind::RetUntyped),
-        ("OpRetTyped", InstructionRetKind::RetTyped),
+    for (spv_enum_name, f_enum_name, irk) in [
+        ("OpVoid", "OpVoid", InstructionRetKind::Void),
+        (
+            "OpRetUntyped",
+            "OpExprUntyped",
+            InstructionRetKind::RetUntyped,
+        ),
+        ("OpRetTyped", "OpExpr", InstructionRetKind::RetTyped),
     ] {
-        let enum_ = mods.spv().new_enum(enum_name).vis("pub");
+        let spv_enum = mods.spv().new_enum(spv_enum_name).vis("pub");
         for inst in &instruction_infos {
             if inst.operands.ret_kind != irk {
                 continue;
             }
-            enum_
+            spv_enum
                 .new_variant(&inst.name)
                 .tuple(format!("instruction::{}", &inst.name));
         }
+
+        fn gen_from_impl(
+            module: &mut codegen::Module,
+            enum_name: &str,
+            instruction_ns: &str,
+            inst: &CodegennedInstructionInfo<'_>,
+        ) {
+            let from_impl = module
+                .new_impl(enum_name)
+                .impl_trait(format!("From<{instruction_ns}::{}>", &inst.name));
+            from_impl
+                .new_fn("from")
+                .arg("x", format!("{instruction_ns}::{}", &inst.name))
+                .ret(enum_name)
+                .line(format!("{enum_name}::{variant}(x)", variant = &inst.name));
+        }
         for inst in &instruction_infos {
             if inst.operands.ret_kind != irk {
                 continue;
             }
-            let from_impl = mods
-                .spv()
-                .new_impl(enum_name)
-                .impl_trait(format!("From<instruction::{}>", &inst.name));
-            from_impl
-                .new_fn("from")
-                .arg("x", format!("instruction::{}", &inst.name))
-                .ret(enum_name)
-                .line(format!("{enum_name}::{variant}(x)", variant = &inst.name));
+            gen_from_impl(mods.spv(), spv_enum_name, "instruction", inst);
+            if inst.is_iil {
+                gen_from_impl(mods.iil_flat(), f_enum_name, "instruction", inst);
+            }
         }
+
+        let f_op_enum = (mods.iil_flat())
+            .new_enum(f_enum_name)
+            .vis("pub")
+            .derive("Debug");
+        instruction_infos
+            .iter()
+            .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+            .for_each(|ii| {
+                f_op_enum
+                    .new_variant(&ii.name)
+                    .tuple(format!("instruction::{}", ii.name));
+            });
+
+        let f_op_enum_renumberable = (mods.iil_flat())
+            .new_impl(f_enum_name)
+            .impl_trait("block::Renumberable");
+        let f_op_enum_renumber = f_op_enum_renumberable
+            .new_fn("renumber")
+            .arg_mut_self()
+            .arg("from", "block::BlockLocalRef")
+            .arg("to", "block::BlockLocalRef");
+        f_op_enum_renumber.line("match self {");
+        instruction_infos
+            .iter()
+            .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+            .for_each(|ii| {
+                f_op_enum_renumber.line(format!(
+                    "Self::{name}(o) => o.renumber(from, to),",
+                    name = ii.name
+                ));
+            });
+        f_op_enum_renumber.line("}");
     }
-
-    let f_op_expr = mods
-        .iil_flat()
-        .new_enum("OpExpr")
-        .vis("pub")
-        .derive("Debug");
-    instruction_infos
-        .iter()
-        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
-        .for_each(|ii| {
-            f_op_expr
-                .new_variant(&ii.name)
-                .tuple(format!("instruction::{}", ii.name));
-        });
-
-    let f_op_expr_renumberable = (mods.iil_flat())
-        .new_impl("OpExpr")
-        .impl_trait("block::Renumberable");
-    let f_op_expr_renumber = f_op_expr_renumberable
-        .new_fn("renumber")
-        .arg_mut_self()
-        .arg("from", "block::BlockLocalRef")
-        .arg("to", "block::BlockLocalRef");
-    f_op_expr_renumber.line("match self {");
-    instruction_infos
-        .iter()
-        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
-        .for_each(|ii| {
-            f_op_expr_renumber.line(format!(
-                "Self::{name}(o) => o.renumber(from, to),",
-                name = ii.name
-            ));
-        });
-    f_op_expr_renumber.line("}");
-
-    let f_op_void_renumberable = (mods.iil_flat())
-        .new_impl("OpVoid")
-        .impl_trait("block::Renumberable");
-    let f_op_void_renumber = f_op_void_renumberable
-        .new_fn("renumber")
-        .arg_mut_self()
-        .arg("from", "block::BlockLocalRef")
-        .arg("to", "block::BlockLocalRef");
-    f_op_void_renumber.line("match self {");
-    instruction_infos
-        .iter()
-        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
-        .for_each(|ii| {
-            f_op_void_renumber.line(format!(
-                "Self::{name}(o) => o.renumber(from, to),",
-                name = ii.name
-            ));
-        });
-    f_op_void_renumber.line("}");
-
-    /*
-    let h_op_expr_ftb = (mods.iil_hierarchical())
-        .new_impl("OpExpr")
-        .impl_trait("FlattenableToBlock");
-    let h_op_expr_flatten = h_op_expr_ftb
-        .new_fn("flatten")
-        .arg_self()
-        .arg("ctx", "&mut iil::block::Ctx")
-        .ret("HBlock");
-    h_op_expr_flatten.line("match self {");
-    instruction_infos
-        .iter()
-        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::RetTyped))
-        .for_each(|ii| {
-            h_op_expr_flatten.line(format!(
-                "Self::{name}(o) => o.flatten(ctx),",
-                name = ii.name
-            ));
-        });
-    h_op_expr_flatten.line("}");
-    */
-
-    // FIXME need to handle the few RetUntyped ones too
-    //       although can probably mostly put that off until later since they're mostly just
-    //       debug-related and hardware-specific things i dont think we super need in 1.0
-
-    let f_op_void = mods.iil_flat().new_enum("OpVoid").vis("pub");
-    f_op_void.derive("Debug");
-    instruction_infos
-        .iter()
-        .filter(|ii| ii.is_iil && matches!(ii.operands.ret_kind, InstructionRetKind::Void))
-        .for_each(|ii| {
-            f_op_void
-                .new_variant(&ii.name)
-                .tuple(format!("instruction::{}", ii.name));
-        });
 }
 
 fn codegen_instruction<'a>(
@@ -336,11 +293,8 @@ fn codegen_instruction<'a>(
 
     // we handle types and constants separately & insert them in the final f-iil -> il phase,
     // so no need to output those instructions at all
-    let should_generate_iil =
-        !(matches!(
-            instruction.class.as_ref(),
-            "Type-Declaration" | "Constant-Creation"
-        ) || matches!(instruction.opname.as_ref(), "OpFunction" | "OpFunctionEnd"));
+    let should_generate_iil = !(matches!(instruction.class.as_ref(), "Constant-Creation")
+        || matches!(instruction.opname.as_ref(), "OpFunction" | "OpFunctionEnd"));
 
     if should_generate_iil {
         let fiil_struct = mods

@@ -270,16 +270,23 @@ pub mod prelude {
     }
 }
 
-mod to_spv {
+pub(crate) mod to_spv {
     use super::*;
-    use crate::spv::{self, instruction as inst, operand_kind as ok};
+    use crate::{
+        iil::{
+            self, block,
+            f::{self, instruction as fops},
+        },
+        spv::{self, instruction as inst, operand_kind as ok},
+    };
 
-    trait TypeToSpv {
+    pub(crate) trait TypeToSpv {
+        // TODO might help to have the item be Cow'd here
         fn prerequisites(&self) -> Box<dyn Iterator<Item = Type>>;
         fn to_direct_instruction(
             &self,
-            available: HashMap<Type, ok::IdRef>,
-        ) -> Option<spv::OpRetUntyped>;
+            available: &HashMap<Type, block::BlockLocalRef>,
+        ) -> Option<f::OpExprUntyped>;
     }
 
     macro_rules! impl_type_to_spv {
@@ -294,8 +301,8 @@ mod to_spv {
                 fn prerequisites(&$self) -> Box<dyn Iterator<Item = Type>> { $req_impl }
                 fn to_direct_instruction(
                     &$self,
-                    $available: HashMap<Type, ok::IdRef>,
-                ) -> Option<spv::OpRetUntyped> {
+                    $available: &HashMap<Type, block::BlockLocalRef>,
+                ) -> Option<f::OpExprUntyped> {
                     try { $to_impl }
                 }
             })*
@@ -309,8 +316,8 @@ mod to_spv {
                 }
                 fn to_direct_instruction(
                     &self,
-                    available: HashMap<Type, ok::IdRef>,
-                ) -> Option<spv::OpRetUntyped> {
+                    available: &HashMap<Type, block::BlockLocalRef>,
+                ) -> Option<f::OpExprUntyped> {
                     match self {
                         $( Self::$variant(x) => x.to_direct_instruction(available) ),*
                     }
@@ -325,14 +332,14 @@ mod to_spv {
     impl_type_to_spv! { self; available;
         Matrix {
             prereq { Box::new(once(self.column_type.into())) }
-            to { spv::instruction::OpTypeMatrix {
+            to { fops::OpTypeMatrix {
                 op0: *available.get(&self.column_type.into())?,
                 op1: self.column_count.into(),
             }.into() }
         }
         Vector {
             prereq { Box::new(once(self.component_type.into())) }
-            to { spv::instruction::OpTypeVector {
+            to { fops::OpTypeVector {
                 op0: *available.get(&self.component_type.into())?,
                 op1: self.component_count.into(),
             }.into() }
@@ -340,35 +347,35 @@ mod to_spv {
         Integer {
             prereq { Box::new(empty()) }
             to { match self {
-                Self::Signed(width) => spv::instruction::OpTypeInt { op0: (*width).into(), op1: 1.into() }.into(),
-                Self::Unsigned(width) => spv::instruction::OpTypeInt { op0: (*width).into(), op1: 0.into() }.into(),
+                Self::Signed(width) => fops::OpTypeInt { op0: (*width).into(), op1: 1.into() }.into(),
+                Self::Unsigned(width) => fops::OpTypeInt { op0: (*width).into(), op1: 0.into() }.into(),
             } }
         }
         Float {
             prereq { Box::new(empty()) }
-            to { inst::OpTypeFloat {op0: self.width.into(), op1: None }.into() }
+            to { fops::OpTypeFloat {op0: self.width.into(), op1: None }.into() }
         }
         Void {
             prereq { Box::new(empty()) }
-            to { inst::OpTypeVoid {}.into() }
+            to { fops::OpTypeVoid {}.into() }
         }
         Bool {
             prereq { Box::new(empty()) }
-            to { inst::OpTypeBool {}.into() }
+            to { fops::OpTypeBool {}.into() }
         }
         Function {
             prereq { Box::new(chain(
                 once(*self.result.clone()),
                 self.args.clone().into_iter()
             )) }
-            to { inst::OpTypeFunction {
+            to { fops::OpTypeFunction {
                 op0: *available.get(&self.result)?,
                 op1: self.args.iter().map(|arg| available.get(arg).copied()).try_collect()?,
             }.into() }
         }
         Pointer {
             prereq { Box::new(once(*self.target.clone())) }
-            to { inst::OpTypePointer { op0: self.storage_class, op1: *available.get(&self.target)? }.into() }
+            to { fops::OpTypePointer { op0: self.storage_class, op1: *available.get(&self.target)? }.into() }
         }
     }
     impl_type_to_spv! {@dispatch_variants Type { Concrete, Abstract, Function, Pointer }}

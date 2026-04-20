@@ -23,15 +23,15 @@ use crate::{
 pub(super) fn process_file(
     file: ast::File<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
+    blockctx: &mut block::Ctx,
 ) {
-    let mut blockctx = block::Ctx::new();
     for (name, functions) in file.functions {
         for function in functions {
-            let f = process_function(function, universe, &mut blockctx);
+            let f = process_function(function, universe, blockctx);
             println!("====================");
             dbg!(&f);
             println!(">>>>>>>>>>>>>>>>>>>>");
-            let flat_body = flatten(f.body, &mut blockctx);
+            let flat_body = flatten(f.body, blockctx);
             dbg!(&flat_body);
         }
     }

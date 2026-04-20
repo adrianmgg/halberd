@@ -1,4 +1,4 @@
-pub use crate::generated::iil::flat::{OpExpr, OpVoid};
+pub use crate::generated::iil::flat::{OpExpr, OpExprUntyped, OpVoid};
 use crate::{
     iil::{self, block},
     spv::{self, operand_kind as ok},
