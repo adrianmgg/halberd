@@ -3,9 +3,12 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use crate::util::{
-    impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant,
-    impl_debug_via_display, impl_display_enum_variants_transparent,
+use crate::{
+    spv::operand_kind,
+    util::{
+        impl_conversion_2_hop, impl_conversion_copy_deref, impl_conversion_enum_variant,
+        impl_debug_via_display, impl_display_enum_variants_transparent,
+    },
 };
 
 // FIXME can't currently represent boolean vectors
@@ -15,10 +18,11 @@ pub enum Type {
     Concrete(Concrete),
     Abstract(Abstract),
     Function(Function),
+    Pointer(Pointer),
 }
-impl_conversion_enum_variant!(Type::{Concrete, Abstract});
+impl_conversion_enum_variant!(Type::{Concrete, Abstract, Function, Pointer});
 
-impl_display_enum_variants_transparent!(Type { Concrete, Abstract, Function });
+impl_display_enum_variants_transparent!(Type { Concrete, Abstract, Function, Pointer });
 impl_debug_via_display!(Type);
 
 // "Concrete Type: A numerical scalar, vector, or matrix type, or physical pointer type, or any aggregate containing only these types."
@@ -178,6 +182,18 @@ impl Display for Matrix {
     }
 }
 impl_debug_via_display!(Matrix);
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct Pointer {
+    storage_class: operand_kind::StorageClass,
+    target: Box<Type>,
+}
+
+impl Display for Pointer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "*{}", self.target)
+    }
+}
 
 macro_rules! mk_option_helper_exts {
     (
@@ -350,8 +366,12 @@ mod to_spv {
                 op1: self.args.iter().map(|arg| available.get(arg).copied()).try_collect()?,
             }.into() }
         }
+        Pointer {
+            prereq { Box::new(once(*self.target.clone())) }
+            to { inst::OpTypePointer { op0: self.storage_class, op1: *available.get(&self.target)? }.into() }
+        }
     }
-    impl_type_to_spv! {@dispatch_variants Type { Concrete, Abstract, Function }}
+    impl_type_to_spv! {@dispatch_variants Type { Concrete, Abstract, Function, Pointer }}
     impl_type_to_spv! {@dispatch_variants Concrete { Number, Vector, Matrix }}
     impl_type_to_spv! {@dispatch_variants Abstract { Void, Bool }}
     impl_type_to_spv! {@dispatch_variants NumberKind { Integer, Float }}

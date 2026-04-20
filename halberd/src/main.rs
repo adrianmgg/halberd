@@ -3,7 +3,6 @@
 #![feature(macro_metavar_expr_concat)]
 // #![feature(min_specialization)]
 #![feature(iterator_try_collect)]
-
 // FIXME should probably turn this back on once we reach a 1.0
 #![allow(unused)]
 #![warn(clippy::all, clippy::pedantic)]

@@ -508,7 +508,7 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                         .r#macro(r##"#[enumset(map = "compact")]"##);
                 }
                 _ => {
-                    e.repr("u32").derive("Debug").derive("Copy").derive("Clone");
+                    e.repr("u32").derive("Debug,Copy,Clone,PartialEq,Eq,Hash");
                 }
             }
             for enumerant in enumerants {
