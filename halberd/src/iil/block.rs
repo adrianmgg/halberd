@@ -6,6 +6,8 @@ use std::{
 
 use unwrap_infallible::UnwrapInfallible as _;
 
+use crate::util::matches_opt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(u64);
 
@@ -96,6 +98,17 @@ impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal> {
             .map(|(i, local)| (BlockLocalRef { block: self.id, local: i }, local))
     }
 
+    pub fn locals_valued_only(&self) -> impl Iterator<Item = (BlockLocalRef, &ValuedLocal)> {
+        self.locals().filter_map(|(r, local)| {
+            matches_opt!(local, BlockLocal::Valued(l) => l).map(|l| (r, l))
+        })
+    }
+
+    pub fn locals_void_only(&self) -> impl Iterator<Item = (BlockLocalRef, &VoidLocal)> {
+        self.locals()
+            .filter_map(|(r, local)| matches_opt!(local, BlockLocal::Void(l) => l).map(|l| (r, l)))
+    }
+
     pub fn into_parts(
         self,
     ) -> (
@@ -121,6 +134,31 @@ impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal> {
         MapVoid: Fn(VoidLocal) -> NewVoidLocal,
         MapValued: Fn(ValuedLocal) -> NewValuedLocal,
         MapTerminal: FnOnce(Terminal) -> NewTerminal,
+    {
+        Block {
+            id: self.id,
+            locals: self
+                .locals
+                .into_iter()
+                .map(|local| match local {
+                    BlockLocal::Void(void) => BlockLocal::Void(map_void(void)),
+                    BlockLocal::Valued(valued) => BlockLocal::Valued(map_valued(valued)),
+                })
+                .collect(),
+            terminal: map_terminal(self.terminal),
+        }
+    }
+
+    pub fn map_mut<NewVoidLocal, NewValuedLocal, NewTerminal, MapVoid, MapValued, MapTerminal>(
+        self,
+        mut map_void: MapVoid,
+        mut map_valued: MapValued,
+        mut map_terminal: MapTerminal,
+    ) -> Block<NewVoidLocal, NewValuedLocal, NewTerminal>
+    where
+        MapVoid: FnMut(VoidLocal) -> NewVoidLocal,
+        MapValued: FnMut(ValuedLocal) -> NewValuedLocal,
+        MapTerminal: FnMut(Terminal) -> NewTerminal,
     {
         Block {
             id: self.id,

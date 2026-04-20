@@ -61,3 +61,10 @@ pub struct Function {
     pub r#type: types::Function,
     pub body: Block,
 }
+
+#[derive(Debug)]
+pub struct FlatFunction {
+    pub control: enumset::EnumSet<operand_kind::FunctionControl>,
+    pub r#type: types::Function,
+    pub body: FlatBlock,
+}
