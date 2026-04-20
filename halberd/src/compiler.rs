@@ -5,10 +5,11 @@ use crate::{
     types::{self, prelude::*},
 };
 
+/// FIXME give this a better name
+mod iil_phase_part2;
 mod iilifying_phase;
 mod scoping_phase;
 mod sidecars;
-mod spvifying_phase;
 mod typing_phase;
 
 pub(crate) use sidecars::ExprSidecar;
