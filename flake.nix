@@ -74,10 +74,15 @@
           workspace-clippy = craneLib.cargoClippy (commonArgs
             // {
               inherit cargoArtifacts;
+              inherit SPIRV_GRAMMAR_JSON;
               cargoClippyExtraArgs = "--all-targets -- --deny warnings";
             });
           # TODO: see crane's quickstart example setting this to be stricter
-          workspace-doc = craneLib.cargoDoc (commonArgs // {inherit cargoArtifacts;});
+          workspace-doc = craneLib.cargoDoc (commonArgs
+            // {
+              inherit cargoArtifacts;
+              inherit SPIRV_GRAMMAR_JSON;
+            });
           workspace-fmt = craneLib.cargoFmt {inherit src;};
         };
         packages.default = halberd;
