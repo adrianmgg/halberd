@@ -3,6 +3,7 @@
 #![feature(macro_metavar_expr_concat)]
 // #![feature(min_specialization)]
 #![feature(iterator_try_collect)]
+#![feature(iter_intersperse)]
 // FIXME should probably turn this back on once we reach a 1.0
 #![allow(unused)]
 #![warn(clippy::all, clippy::pedantic)]
@@ -23,6 +24,7 @@ pub(crate) mod lexer;
 pub(crate) mod parser;
 pub(crate) mod scope;
 pub(crate) mod spv;
+pub(crate) mod tex;
 pub(crate) mod types;
 pub(crate) mod util;
 
@@ -34,7 +36,7 @@ fn main() {
         let line = line.unwrap();
         let src = ariadne::Source::from(&line);
         // FIXME should eventually really be using `.into_output_errors` instead of `.into_result`
-        let tokens = match dbg!(lexer::lexer().parse(&line).into_result()) {
+        let tokens = match lexer::lexer().parse(&line).into_result() {
             Ok(tokens) => tokens,
             Err(errs) => {
                 for err in errs {
@@ -43,6 +45,7 @@ fn main() {
                 continue;
             }
         };
+        println!("{}", tex::Tex(&(tokens.as_slice(), line.as_ref())));
         let parser_input = tokens[..].split_spanned((0..line.len()).into());
         let file = match parser::file().parse(parser_input).into_result() {
             Ok(file) => file,
@@ -53,12 +56,13 @@ fn main() {
                 continue;
             }
         };
+        println!("{}", tex::Tex(&file));
         println!(
             "================================================================================"
         );
         match compiler::compile(file) {
             Ok((file, universe)) => {
-                dbg!(&file, &universe);
+                // dbg!(&file, &universe);
                 println!(
                     "================================================================================"
                 );

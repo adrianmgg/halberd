@@ -4,6 +4,7 @@ use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 
 use chumsky::span::Spanned;
 use derive_where::derive_where;
+use enumset::EnumSetType;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 pub(crate) use sidecar::*;
@@ -131,4 +132,11 @@ impl<'a, S: Sidecars> chumsky::container::Container<Function<'a, S>> for File<'a
         let a = item.data.name.inner.clone();
         self.functions.entry(a).or_default().push(item);
     }
+}
+
+#[derive(EnumSetType)]
+// TODO
+#[enumset(map = "compact")]
+pub(crate) enum FunctionFlag {
+    Inline,
 }

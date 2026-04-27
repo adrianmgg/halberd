@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use chumsky::{Parser as _, extra, input::MappedInput, pratt::*, prelude::*};
+use enumset::EnumSet;
 use num_rational::BigRational;
 
 use crate::{
@@ -49,6 +50,16 @@ fn braces<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'t
 fn r#type<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<types::Type>> {
     select! { Token::Type(t) => t }.spanned()
 }
+
+/* fn function_flags<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, EnumSet<ast::FunctionFlag>>
+{
+    choice((
+        //
+        dollar_ident("inline").to(ast::FunctionFlag::Inline),
+    ))
+    .repeated()
+    .collect()
+} */
 
 pub fn function<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::Function<'src>> {
     let function_arg = ident()

@@ -1,7 +1,14 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScopeId(usize);
+
+impl Display for ScopeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.0.fmt(f) }
+}
 
 impl ScopeId {
     fn into_idx(self) -> usize { self.0 }
@@ -147,5 +154,60 @@ impl<Item> ScopeRefMut<'_, Item> {
 
     pub fn insert<S: Into<Box<str>>>(&mut self, key: S, item: Item) {
         self.universe.scope_insert(self.scope, key.into(), item);
+    }
+}
+
+impl<T> crate::tex::DebugTex for Universe<T>
+where T: crate::tex::DebugTexNamespaceSidecar
+{
+    fn fmt_tex(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(
+            r"\begin{tabular}{|c|c|@{}c@{}|}
+	\hline id & parent & items \\
+	\hline
+",
+        )?;
+
+        let item_cols = T::namespace_item_columns();
+        let item_subtable_colspec: String = std::iter::repeat_n("c", 1 + item_cols.len())
+            .intersperse("|")
+            .collect();
+        let item_subtable_header: String =
+            std::iter::chain(std::iter::once("name"), item_cols.iter().copied())
+                .intersperse(" & ")
+                .collect();
+
+        for (scope_id, scope) in self.scopes.iter().enumerate() {
+            write!(f, r"	\hline {scope_id} & ")?;
+            match scope.parent {
+                Some(parent_id) => write!(f, "{parent_id}")?,
+                None => f.write_str("None")?,
+            }
+            f.write_str(" & ")?;
+            if !scope.items.is_empty() {
+                write!(
+                    f,
+                    r"\begin{{tabular}}{{{item_subtable_colspec}}}
+		{item_subtable_header} \\
+		\hline
+"
+                )?;
+                for (name, value) in &scope.items {
+                    write!(f, r"		\hline {name}")?;
+                    for vcol in value.namespace_item_entries() {
+                        write!(f, " & {vcol}")?;
+                    }
+                    f.write_str(" \\\\\n")?;
+                }
+                f.write_str(r"\end{tabular}")?;
+            }
+            f.write_str(" \\\\\n")?;
+        }
+
+        f.write_str(
+            r"\hline
+\end{tabular}",
+        )?;
+        Ok(())
     }
 }

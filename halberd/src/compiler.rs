@@ -2,6 +2,7 @@ use crate::{
     ast::{self, Sidecarred, Sidecars},
     iil::block,
     scope::{self, ScopeId},
+    tex,
     types::{self, prelude::*},
 };
 
@@ -9,7 +10,7 @@ use crate::{
 mod iil_phase_part2;
 mod iilifying_phase;
 mod scoping_phase;
-mod sidecars;
+pub(crate) mod sidecars;
 mod typing_phase;
 
 pub(crate) use sidecars::ExprSidecar;
@@ -92,7 +93,16 @@ pub fn compile(
     let mut universe = scope::Universe::new();
 
     let (file, universe) = scoping_phase::populate_scopes(file, universe)?;
+
+    println!("\n\n\n%%%%%%%% post- scoping phase");
+    println!("{}", tex::Tex(&file));
+    println!("{}", tex::Tex(&universe));
+
     let (file, universe) = typing_phase::populate_types(file, universe)?;
+
+    println!("\n\n\n%%%%%%%% post- typing phase");
+    println!("{}", tex::Tex(&file));
+    println!("{}", tex::Tex(&universe));
 
     Ok((file, universe))
 }
