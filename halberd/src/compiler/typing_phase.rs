@@ -35,7 +35,7 @@ pub(crate) fn populate_types<'a>(
                data: &ast::FunctionData<'a, PhasePartiallyTyped>,
                scope: &mut <PhasePartiallyTyped as Sidecars>::Func,
                _| {
-            dbg!(&universe);
+            // dbg!(&universe);
             let mut scope_bound = universe.get_scope_mut(*scope);
             #[allow(
                 clippy::map_all_any_identity,

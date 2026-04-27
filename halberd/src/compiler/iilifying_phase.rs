@@ -44,6 +44,8 @@ pub(super) fn process_file(
         identity,
     );
 
+    dbg!(&fns);
+
     let fns = fns.map_mut(
         identity,
         |func| h::FlatFunction {
@@ -53,6 +55,8 @@ pub(super) fn process_file(
         },
         identity,
     );
+
+    dbg!(&fns);
 
     let all_types_needed = fns
         .locals_valued_only()
