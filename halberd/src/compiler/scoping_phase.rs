@@ -61,13 +61,17 @@ pub(super) fn populate_scopes<'a>(
                         | ast::ExprData::LiteralFloat(..)
                         | ast::ExprData::LiteralBool(..)
                         | ast::ExprData::Var(..)
-                        | ast::ExprData::InfixOp(..) => super_scope,
+                        | ast::ExprData::InfixOp(..)
+                        | ast::ExprData::FunctionCall(..)
+                        | ast::ExprData::FieldAccess(..) => super_scope,
                         // blocks get a new scope
                         ast::ExprData::Block(..) =>
                             universe.get_scope_mut(super_scope).new_subscope(),
                         ast::ExprData::Declaration { name, r#type: _, value: _ } => {
                             let new_scope = universe.get_scope_mut(super_scope).new_subscope();
-                            universe.get_scope_mut(new_scope).insert(name.inner, ());
+                            universe
+                                .get_scope_mut(new_scope)
+                                .insert(name.inner.clone(), ());
                             new_scope
                         }
                     };

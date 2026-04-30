@@ -98,3 +98,13 @@ pub(crate) enum Either<L, R> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum Never {}
+
+pub(crate) trait SpannedExt<T, S> {
+    fn map_inner<F: FnOnce(T) -> U, U>(self, f: F) -> chumsky::span::Spanned<U, S>;
+}
+
+impl<T, S> SpannedExt<T, S> for chumsky::span::Spanned<T, S> {
+    fn map_inner<F: FnOnce(T) -> U, U>(self, f: F) -> chumsky::span::Spanned<U, S> {
+        chumsky::span::Spanned { inner: f(self.inner), span: self.span }
+    }
+}

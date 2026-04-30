@@ -2,7 +2,7 @@ use std::assert_matches;
 
 use chumsky::span::Spanned;
 
-use crate::ast::{Block, Expr, ExprData, File, Function, FunctionData};
+use crate::ast::{Block, Expr, ExprData, FieldAccess, File, Function, FunctionCall, FunctionData};
 
 pub(crate) trait Sidecars {
     type Expr: std::fmt::Debug + Clone + PartialEq;
@@ -61,29 +61,6 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
         let mut errs = Vec::new();
         self.validate_sidecars_into(fns, &mut errs);
         if errs.is_empty() { Ok(()) } else { Err(errs) }
-    }
-
-    // FIXME name
-    fn modify_some_sidecars<
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool,
-        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut S::Func) -> bool,
-    >(
-        &mut self,
-        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
-    ) -> usize;
-
-    fn iteratively_modify_sidecars<
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool,
-        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut S::Func) -> bool,
-    >(
-        &mut self,
-        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
-    ) {
-        loop {
-            if self.modify_some_sidecars(fns) == 0 {
-                break;
-            }
-        }
     }
 
     // NOTE trying out 'everything has the same ctx type' for now, since that solves the problem of
@@ -170,6 +147,18 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                             last: last.map(|e| Box::new(e.map_sidecars(fns))),
                         },
                     }),
+                ExprData::FunctionCall(FunctionCall { target, args, span }) =>
+                    ExprData::FunctionCall(FunctionCall {
+                        target: Box::new(target.map_sidecars(fns)),
+                        args: args.into_iter().map(|e| e.map_sidecars(fns)).collect(),
+                        span,
+                    }),
+                ExprData::FieldAccess(FieldAccess { target, field, span }) =>
+                    ExprData::FieldAccess(FieldAccess {
+                        target: Box::new(target.map_sidecars(fns)),
+                        field,
+                        span,
+                    }),
             },
         }
     }
@@ -206,36 +195,15 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     last_expr.validate_sidecars_into(fns, errors);
                 }
             }
+            ExprData::FunctionCall(FunctionCall { target, args, span: _ }) => {
+                target.validate_sidecars_into(fns, errors);
+                for arg in args {
+                    arg.validate_sidecars_into(fns, errors);
+                }
+            }
+            ExprData::FieldAccess(FieldAccess { target, field: _, span: _ }) =>
+                target.validate_sidecars_into(fns, errors),
         }
-    }
-
-    fn modify_some_sidecars<
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut <S as Sidecars>::Expr) -> bool,
-        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut <S as Sidecars>::Func) -> bool,
-    >(
-        &mut self,
-        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
-    ) -> usize {
-        usize::from((fns.expr)(&self.data, &mut self.sidecar))
-            + (match &mut self.data {
-                ExprData::LiteralInt(_)
-                | ExprData::LiteralFloat(_)
-                | ExprData::LiteralBool(_)
-                | ExprData::Var(_) => 0,
-                ExprData::InfixOp(lhs, _, rhs) =>
-                    lhs.modify_some_sidecars(fns) + rhs.modify_some_sidecars(fns),
-                ExprData::Declaration { name: _, r#type: _, value } =>
-                    value.modify_some_sidecars(fns),
-                ExprData::Block(b) =>
-                    (b.exprs)
-                        .iter_mut()
-                        .map(|e| e.modify_some_sidecars(fns))
-                        .sum::<usize>()
-                        + (b.last)
-                            .as_mut()
-                            .map(|e| e.modify_some_sidecars(fns))
-                            .unwrap_or_default(),
-            })
     }
 
     fn modify_some_sidecars_2<
@@ -299,6 +267,15 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     foo!(expr);
                 }
             }
+            ExprData::FunctionCall(FunctionCall { target, args, span }) => {
+                foo!(target);
+                for expr in args {
+                    foo!(expr);
+                }
+            }
+            ExprData::FieldAccess(FieldAccess { target, .. }) => {
+                foo!(target);
+            }
         }
 
         (n_changes, ctx_final)
@@ -344,17 +321,6 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Function<'a, S> {
             errors.push(error);
         }
         self.data.body.validate_sidecars_into(fns, errors);
-    }
-
-    fn modify_some_sidecars<
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool,
-        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut S::Func) -> bool,
-    >(
-        &mut self,
-        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
-    ) -> usize {
-        usize::from((fns.func)(&self.data, &mut self.sidecar))
-            + self.data.body.modify_some_sidecars(fns)
     }
 
     fn modify_some_sidecars_2<
@@ -438,22 +404,6 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for File<'a, S> {
                 function.validate_sidecars_into(fns, errors);
             }
         }
-    }
-
-    fn modify_some_sidecars<
-        AdjustExpr: FnMut(&ExprData<'a, S>, &mut S::Expr) -> bool,
-        AdjustFunc: FnMut(&FunctionData<'a, S>, &mut S::Func) -> bool,
-    >(
-        &mut self,
-        fns: &mut SidecarFns<AdjustExpr, AdjustFunc>,
-    ) -> usize {
-        let mut n = 0;
-        for functions in self.functions.values_mut() {
-            for function in functions.iter_mut() {
-                n += function.modify_some_sidecars(fns);
-            }
-        }
-        n
     }
 
     fn modify_some_sidecars_2<

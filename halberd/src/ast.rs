@@ -2,7 +2,7 @@ mod sidecar;
 
 use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 
-use chumsky::span::Spanned;
+use chumsky::span::{SimpleSpan as Span, Spanned};
 use derive_where::derive_where;
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -26,21 +26,23 @@ pub(crate) enum ExprData<'a, S: Sidecars = PhaseInitial> {
     LiteralFloat(Spanned<LiteralFloat>),
     LiteralBool(Spanned<bool>),
     InfixOp(Box<Expr<'a, S>>, Spanned<InfixOp>, Box<Expr<'a, S>>),
-    Var(Spanned<&'a str>),
+    Var(Spanned<Cow<'a, str>>),
     Declaration {
-        name: Spanned<&'a str>,
+        name: Spanned<Cow<'a, str>>,
         r#type: Spanned<types::Type>,
         value: Box<Expr<'a, S>>,
     },
     Block(Spanned<Block<'a, S>>),
+    FunctionCall(FunctionCall<'a, S>),
+    FieldAccess(FieldAccess<'a, S>),
 }
 
 impl<S: Sidecars> Expr<'_, S> {
-    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
+    pub(crate) fn span(&self) -> Span { self.data.span() }
 }
 
 impl<S: Sidecars> ExprData<'_, S> {
-    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan {
+    pub(crate) fn span(&self) -> Span {
         match self {
             ExprData::LiteralInt(Spanned { span, .. })
             | ExprData::LiteralFloat(Spanned { span, .. })
@@ -48,7 +50,9 @@ impl<S: Sidecars> ExprData<'_, S> {
             | ExprData::Var(Spanned { span, .. })
             | ExprData::Block(Spanned { span, .. })
             | ExprData::InfixOp(_, Spanned { span, .. }, _)
-            | ExprData::Declaration { name: Spanned { span, .. }, r#type: _, value: _ } => *span,
+            | ExprData::Declaration { name: Spanned { span, .. }, r#type: _, value: _ }
+            | ExprData::FunctionCall(FunctionCall { span, .. })
+            | ExprData::FieldAccess(FieldAccess { span, .. }) => *span,
         }
     }
 }
@@ -98,7 +102,7 @@ impl<'a> From<FunctionData<'a, PhaseInitial>> for Function<'a, PhaseInitial> {
 }
 
 impl<S: Sidecars> Function<'_, S> {
-    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.data.span() }
+    pub(crate) fn span(&self) -> Span { self.data.span() }
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
@@ -111,7 +115,7 @@ pub(crate) struct FunctionData<'a, S: Sidecars = PhaseInitial> {
 }
 
 impl<S: Sidecars> FunctionData<'_, S> {
-    pub(crate) fn span(&self) -> chumsky::span::SimpleSpan { self.name.span }
+    pub(crate) fn span(&self) -> Span { self.name.span }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,4 +135,18 @@ impl<'a, S: Sidecars> chumsky::container::Container<Function<'a, S>> for File<'a
         let a = item.data.name.inner.clone();
         self.functions.entry(a).or_default().push(item);
     }
+}
+
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
+pub(crate) struct FunctionCall<'a, S: Sidecars = PhaseInitial> {
+    pub(crate) target: Box<Expr<'a, S>>,
+    pub(crate) args: Vec<Expr<'a, S>>,
+    pub(crate) span: Span,
+}
+
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
+pub(crate) struct FieldAccess<'a, S: Sidecars = PhaseInitial> {
+    pub(crate) target: Box<Expr<'a, S>>,
+    pub(crate) field: Spanned<Cow<'a, str>>,
+    pub(crate) span: Span,
 }

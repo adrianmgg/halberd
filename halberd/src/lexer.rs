@@ -58,6 +58,7 @@ pub enum Symbol {
     Colon,
     Equals,
     Comma,
+    Dot,
 }
 
 impl Display for Symbol {
@@ -67,6 +68,7 @@ impl Display for Symbol {
             Symbol::Colon => ":",
             Symbol::Equals => "=",
             Symbol::Comma => ",",
+            Symbol::Dot => ".",
         };
         write!(f, "{s}")
     }
@@ -241,6 +243,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
             just(",").to(Symbol::Comma),
             just(";").to(Symbol::Semicolon),
             just(":").to(Symbol::Colon),
+            just(".").to(Symbol::Colon),
         ))
         .map(Token::Symbol)
         .labelled("non-operator symbol")

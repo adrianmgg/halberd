@@ -222,7 +222,7 @@ fn push_expr_to_block_mostly(
             );
             // and add that to our corresponding scope entry
             let mut scope = universe.get_scope_mut(expr.sidecar.scope());
-            assert!(scope.lookup_and_modify(name.inner, |info| {
+            assert!(scope.lookup_and_modify(&name.inner, |info| {
                 assert_matches!(info.block_ref, None);
                 info.block_ref = Some(var_br);
             }));
@@ -246,10 +246,12 @@ fn push_expr_to_block_mostly(
         ast::ExprData::Var(Spanned { inner: name, .. }) => {
             // FIXME need to do proper errors instead of panic here
             let scope = universe.get_scope(expr.sidecar.scope());
-            let var_info = scope.lookup(name).unwrap();
+            let var_info = scope.lookup(&name).unwrap();
             let block_ref = var_info.block_ref.unwrap();
             block::BlockLocal::Valued(block_ref.into())
         }
+        ast::ExprData::FunctionCall(function_call) => todo!(),
+        ast::ExprData::FieldAccess(field_access) => todo!(),
     }
 }
 

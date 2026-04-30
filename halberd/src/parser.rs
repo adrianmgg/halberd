@@ -7,7 +7,19 @@ use crate::{
     ast::{self, Expr, ExprData},
     lexer::{self, Keyword, Symbol, Token},
     types,
+    util::SpannedExt as _,
 };
+
+// higher = earlier
+#[repr(u16)]
+enum Precedence {
+    Lift2 = 0,
+    Lift1 = 1,
+    MulDiv = 4,
+    AddSub = 5,
+    FunctionCall = 6,
+    FieldAccess = 7,
+}
 
 type ParserInput<'tokens, 'src> =
     MappedInput<'tokens, Token<'src>, SimpleSpan, &'tokens [Spanned<Token<'src>>]>;
@@ -17,7 +29,8 @@ type ParserErr<'tokens, 'src> = extra::Err<Rich<'tokens, Token<'src>, SimpleSpan
 pub trait Parser<'tokens, 'src: 'tokens, T> =
     chumsky::Parser<'tokens, ParserInput<'tokens, 'src>, T, ParserErr<'tokens, 'src>>;
 
-fn ident<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>> {
+fn ident<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>> + Clone + Copy {
     select! { Token::Ident(x) => x }
         .map(Cow::Borrowed)
         .spanned()
@@ -38,11 +51,13 @@ fn dollar_ident<'tokens, 'src: 'tokens>(
         .spanned()
 }
 
-fn parens<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> {
+fn parens<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> + Clone + Copy {
     select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) }.labelled("parenthesized")
 }
 
-fn braces<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> {
+fn braces<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> + Clone + Copy {
     select_ref! { Token::Braces(ts) = e => ts.split_spanned(e.span()) }.labelled("braced")
 }
 
@@ -85,8 +100,9 @@ pub fn file<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ast::File<'s
 
 pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<'src>> {
     recursive(|expr| {
-        let ident = select_ref! { Token::Ident(x) => *x };
-        let ident_spanned = ident.spanned();
+        // let ident = select_ref! { Token::Ident(x) => *x };
+        // let ident_spanned = ident.spanned();
+        let ident = ident();
 
         let expr_boxed = expr.clone().map(Box::new);
 
@@ -145,10 +161,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                 .map(ExprData::LiteralBool)
                 .map(Expr::from),
             // foo
-            ident.spanned().map(ExprData::Var).map(Expr::from),
+            ident.map(ExprData::Var).map(Expr::from),
             // let name = ...
             just(Keyword::Let)
-                .ignore_then(ident_spanned)
+                .ignore_then(ident)
                 .then(just(Symbol::Colon).ignore_then(r#type()))
                 .then_ignore(just(Symbol::Equals))
                 .then(expr_boxed.clone())
@@ -183,10 +199,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                 .to_span()
         };
         macro_rules! mk_ops {
-            (infix($assoc:ident($assoc_n:literal)), $op:ident) => {
+            (infix($assoc:ident($assoc_n:expr)), $op:ident) => {
                 mk_ops!(infix($assoc($assoc_n)), lexer::Op::$op, ast::InfixOp::$op)
             };
-            (infix($assoc:ident($assoc_n:literal)), $op_tok:expr, $op_ast:expr) => {
+            (infix($assoc:ident($assoc_n:expr)), $op_tok:expr, $op_ast:expr) => {
                 (
                     infix($assoc($assoc_n), op($op_tok, 0), |l, o, r, _| {
                         Expr::from(ExprData::InfixOp(
@@ -195,20 +211,28 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                             Box::new(r),
                         ))
                     }),
-                    infix($assoc(1), op($op_tok, 1), |l, o, r, _| {
-                        Expr::from(ExprData::InfixOp(
-                            Box::new(l),
-                            $op_ast.with_span(o),
-                            Box::new(r),
-                        ))
-                    }),
-                    infix($assoc(0), op($op_tok, 2), |l, o, r, _| {
-                        Expr::from(ExprData::InfixOp(
-                            Box::new(l),
-                            $op_ast.with_span(o),
-                            Box::new(r),
-                        ))
-                    }),
+                    infix(
+                        $assoc(Precedence::Lift1 as _),
+                        op($op_tok, 1),
+                        |l, o, r, _| {
+                            Expr::from(ExprData::InfixOp(
+                                Box::new(l),
+                                $op_ast.with_span(o),
+                                Box::new(r),
+                            ))
+                        },
+                    ),
+                    infix(
+                        $assoc(Precedence::Lift2 as _),
+                        op($op_tok, 2),
+                        |l, o, r, _| {
+                            Expr::from(ExprData::InfixOp(
+                                Box::new(l),
+                                $op_ast.with_span(o),
+                                Box::new(r),
+                            ))
+                        },
+                    ),
                 )
             };
         }
@@ -218,13 +242,40 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             atom, block,
         ))
         .pratt((
-            mk_ops!(infix(left(5)), Add),
-            mk_ops!(infix(left(5)), Subtract),
-            mk_ops!(infix(left(4)), Multiply),
-            mk_ops!(infix(left(4)), Divide),
-            mk_ops!(infix(left(4)), DotProduct),
-            mk_ops!(infix(left(4)), CrossProduct),
-            mk_ops!(infix(left(4)), MatrixMultiply),
+            (
+                mk_ops!(infix(left(Precedence::AddSub as _)), Add),
+                mk_ops!(infix(left(Precedence::AddSub as _)), Subtract),
+                mk_ops!(infix(left(Precedence::MulDiv as _)), Multiply),
+                mk_ops!(infix(left(Precedence::MulDiv as _)), Divide),
+                mk_ops!(infix(left(Precedence::MulDiv as _)), DotProduct),
+                mk_ops!(infix(left(Precedence::MulDiv as _)), CrossProduct),
+                mk_ops!(infix(left(Precedence::MulDiv as _)), MatrixMultiply),
+            ),
+            postfix(
+                Precedence::FieldAccess as _,
+                just(Symbol::Dot).ignore_then(ident),
+                |target, field, extra: &mut chumsky::input::MapExtra<'_, '_, _, _>| -> Expr<'_> {
+                    Expr::from(ExprData::FieldAccess(ast::FieldAccess {
+                        target: Box::new(target),
+                        field,
+                        span: extra.span(),
+                    }))
+                },
+            ),
+            postfix(
+                Precedence::FunctionCall as _,
+                expr.clone()
+                    .separated_by(just(Symbol::Comma))
+                    .collect()
+                    .nested_in(parens()),
+                |target: Expr<'_>, args, extra| -> Expr<'_> {
+                    Expr::from(ExprData::FunctionCall(ast::FunctionCall {
+                        target: Box::new(target),
+                        args,
+                        span: extra.span(),
+                    }))
+                },
+            ),
         ))
     })
 }

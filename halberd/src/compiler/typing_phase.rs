@@ -72,12 +72,12 @@ pub(crate) fn populate_types<'a>(
             // FIXME need a check for assignment and declaration assignment to have types that
             //       line up
             if let ast::ExprData::Declaration { name, r#type, value } = data {
-                let name = name.inner;
+                let name = &name.inner;
                 let r#type = &r#type.inner;
                 assert!(
                     universe
                         .get_scope_mut(scope)
-                        .lookup_and_modify(name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
+                        .lookup_and_modify(&name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
                             Some(r#type.clone()))
                 );
             }
@@ -186,5 +186,7 @@ pub(crate) fn infer_expr_type(
             // blocks with a terminal expression get that expression's type if it has one
             Some(terminal) => terminal.sidecar.r#type().clone(),
         },
+        ast::ExprData::FunctionCall(ast::FunctionCall { target, args, span }) => todo!(),
+        ast::ExprData::FieldAccess(ast::FieldAccess { target, field, span }) => todo!(),
     }
 }
