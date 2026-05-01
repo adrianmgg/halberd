@@ -77,7 +77,7 @@ pub(crate) fn populate_types<'a>(
                 assert!(
                     universe
                         .get_scope_mut(scope)
-                        .lookup_and_modify(&name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
+                        .lookup_and_modify(name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
                             Some(r#type.clone()))
                 );
             }
@@ -186,7 +186,37 @@ pub(crate) fn infer_expr_type(
             // blocks with a terminal expression get that expression's type if it has one
             Some(terminal) => terminal.sidecar.r#type().clone(),
         },
-        ast::ExprData::FunctionCall(ast::FunctionCall { target, args, span }) => todo!(),
-        ast::ExprData::FieldAccess(ast::FieldAccess { target, field, span }) => todo!(),
+        ast::ExprData::FunctionCall(fc) => infer_function_call_type(fc, scope, universe),
+        ast::ExprData::FieldAccess(fa) => infer_field_access_type(fa, scope, universe),
+    }
+}
+
+pub(crate) fn infer_function_call_type(
+    data: &ast::FunctionCall<'_, PhasePartiallyTyped>,
+    scope: ScopeId,
+    universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
+) -> Option<types::Type> {
+    todo!()
+}
+
+pub(crate) fn infer_field_access_type(
+    data: &ast::FieldAccess<'_, PhasePartiallyTyped>,
+    scope: ScopeId,
+    universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
+) -> Option<types::Type> {
+    let Some(target_type) = data.target.sidecar.r#type() else {
+        return None;
+    };
+    if let Some(vec) = target_type.and_is_vector() {
+        let component_names = &(&['x', 'y', 'z', 'w'])[..vec.component_count as usize];
+        if data.field.inner.chars().count() == 1
+            && component_names.contains(&data.field.inner.chars().next().unwrap())
+        {
+            Some(vec.component_type.into())
+        } else {
+            None
+        }
+    } else {
+        None
     }
 }
