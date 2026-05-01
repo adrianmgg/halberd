@@ -250,8 +250,37 @@ fn push_expr_to_block_mostly(
             let block_ref = var_info.block_ref.unwrap();
             block::BlockLocal::Valued(block_ref.into())
         }
-        ast::ExprData::FunctionCall(function_call) => todo!(),
-        ast::ExprData::FieldAccess(field_access) => todo!(),
+        ast::ExprData::FunctionCall(function_call) => todo!("IL for function calls & ctors"),
+        ast::ExprData::FieldAccess(ast::FieldAccess { target, field, span }) => {
+            let target_type = target.sidecar.r#type();
+            if let Some(vec) = target_type.and_is_vector() {
+                let component_names = &(["x", "y", "z", "w"])[..vec.component_count as usize];
+                let component_idx = component_names.iter().position(|name| *name == *field);
+                if let Some(component_idx) = component_idx {
+                    // FIXME using this same pattern up in InfixOp too. maybe factor out?
+                    let target_local = {
+                        let local =
+                            push_expr_to_block_mostly(*target, universe, blockbuilder, blockctx);
+                        let local = matches_opt!(local, block::BlockLocal::Valued(v) => v).unwrap();
+                        blockbuilder.push_valued_local(local)
+                    };
+                    block::BlockLocal::Valued(
+                        f::OpExpr::OpCompositeExtract(fops::OpCompositeExtract {
+                            ret_type: expr.sidecar.r#type().clone(),
+                            op0: target_local,
+                            op1: vec![component_idx.into()],
+                        })
+                        .into(),
+                    )
+                } else {
+                    panic!()
+                }
+            } else {
+                panic!(
+                    "trying to generate IL for field access which shouldnt have passed type-checking"
+                );
+            }
+        }
     }
 }
 

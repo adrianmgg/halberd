@@ -26,6 +26,7 @@ pub mod operand_kind {
     impl_conversion_2_hop!(u64 => BigInt => LiteralInteger);
     impl_conversion_2_hop!(i32 => BigInt => LiteralInteger);
     impl_conversion_2_hop!(i64 => BigInt => LiteralInteger);
+    impl_conversion_2_hop!(usize => BigInt => LiteralInteger);
 
     #[derive(Debug)]
     pub struct LiteralFloat {
