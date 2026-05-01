@@ -67,6 +67,7 @@ pub(super) fn populate_scopes<'a>(
                         // blocks get a new scope
                         ast::ExprData::Block(..) =>
                             universe.get_scope_mut(super_scope).new_subscope(),
+                        // declarations create a new scope with their varaible set
                         ast::ExprData::Declaration { name, r#type: _, value: _ } => {
                             let new_scope = universe.get_scope_mut(super_scope).new_subscope();
                             universe

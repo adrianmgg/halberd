@@ -30,6 +30,7 @@ pub(crate) trait Sidecarred<'a, S: Sidecars> {
     type WithOtherSidecar<S2: Sidecars>;
 
     fn map_sidecars<
+        // FIXME wait is this lifetime never used...
         'f,
         S2: Sidecars,
         MapExpr: FnMut(&ExprData<'a, S>, S::Expr) -> S2::Expr,
