@@ -54,6 +54,8 @@ pub(super) fn process_file(
         identity,
     );
 
+    dbg!(&fns);
+
     let all_types_needed = fns
         .locals_valued_only()
         .flat_map(|(_, func)| func.body.locals())
@@ -294,7 +296,7 @@ fn flatten_into(
     blockbuilder: &mut block::BlockBuilder<f::OpVoid, h::FlatBlockLocalExpr>,
 ) -> Option<h::FlatBlockLocalExpr> {
     let mut renumbers = Vec::<(block::BlockLocalRef, block::BlockLocalRef)>::new();
-    let (locals, terminal) = block.into_parts();
+    let (locals, mut terminal) = block.into_parts();
     for (n, mut local) in locals {
         for (from, to) in &renumbers {
             local.renumber(*from, *to);
@@ -319,6 +321,11 @@ fn flatten_into(
                         },
                 }
             }
+        }
+    }
+    if let Some(ref mut terminal) = terminal {
+        for (from, to) in &renumbers {
+            terminal.renumber(*from, *to);
         }
     }
     terminal.and_then(|e| match e {
