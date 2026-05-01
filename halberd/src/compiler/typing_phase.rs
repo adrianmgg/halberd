@@ -216,6 +216,8 @@ pub(crate) fn infer_field_access_type(
         } else {
             None
         }
+    } else if let Some(mat) = target_type.and_is_matrix() {
+        todo!("handle typing for matrix field accesses")
     } else {
         None
     }

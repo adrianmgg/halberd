@@ -29,8 +29,7 @@ type ParserErr<'tokens, 'src> = extra::Err<Rich<'tokens, Token<'src>, SimpleSpan
 pub trait Parser<'tokens, 'src: 'tokens, T> =
     chumsky::Parser<'tokens, ParserInput<'tokens, 'src>, T, ParserErr<'tokens, 'src>>;
 
-fn ident<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>> + Clone + Copy {
+fn ident<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Spanned<Cow<'src, str>>> + Copy {
     select! { Token::Ident(x) => x }
         .map(Cow::Borrowed)
         .spanned()
@@ -51,13 +50,13 @@ fn dollar_ident<'tokens, 'src: 'tokens>(
         .spanned()
 }
 
-fn parens<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> + Clone + Copy {
+fn parens<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> + Copy
+{
     select_ref! { Token::Parens(ts) = e => ts.split_spanned(e.span()) }.labelled("parenthesized")
 }
 
-fn braces<'tokens, 'src: 'tokens>()
--> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> + Clone + Copy {
+fn braces<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, ParserInput<'tokens, 'src>> + Copy
+{
     select_ref! { Token::Braces(ts) = e => ts.split_spanned(e.span()) }.labelled("braced")
 }
 
@@ -147,6 +146,12 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             })
             .map(Expr::from);
 
+        let fn_call_args = expr
+            .clone()
+            .separated_by(just(Symbol::Comma))
+            .collect()
+            .nested_in(parens());
+
         let atom = choice((
             // true
             just(Keyword::True)
@@ -172,6 +177,16 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                 .map(Expr::from),
             // numbers
             atom_number,
+            // type ctor
+            r#type().then(fn_call_args.clone()).spanned().map(
+                |Spanned { span, inner: (target, args) }| {
+                    Expr::from(ExprData::FunctionCall(ast::FunctionCall {
+                        target: ast::ExprOrType::Type(target),
+                        args,
+                        span,
+                    }))
+                },
+            ),
         ))
         .boxed();
 
@@ -264,13 +279,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             ),
             postfix(
                 Precedence::FunctionCall as _,
-                expr.clone()
-                    .separated_by(just(Symbol::Comma))
-                    .collect()
-                    .nested_in(parens()),
+                fn_call_args,
                 |target: Expr<'_>, args, extra| -> Expr<'_> {
                     Expr::from(ExprData::FunctionCall(ast::FunctionCall {
-                        target: Box::new(target),
+                        target: ast::ExprOrType::Expr(Box::new(target)),
                         args,
                         span: extra.span(),
                     }))

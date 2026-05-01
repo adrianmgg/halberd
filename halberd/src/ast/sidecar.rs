@@ -2,6 +2,7 @@ use std::assert_matches;
 
 use chumsky::span::Spanned;
 
+use super::ExprOrType;
 use crate::ast::{Block, Expr, ExprData, FieldAccess, File, Function, FunctionCall, FunctionData};
 
 pub(crate) trait Sidecars {
@@ -149,7 +150,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     }),
                 ExprData::FunctionCall(FunctionCall { target, args, span }) =>
                     ExprData::FunctionCall(FunctionCall {
-                        target: Box::new(target.map_sidecars(fns)),
+                        target: match target {
+                            ExprOrType::Expr(e) => ExprOrType::Expr(Box::new(e.map_sidecars(fns))),
+                            ExprOrType::Type(t) => ExprOrType::Type(t),
+                        },
                         args: args.into_iter().map(|e| e.map_sidecars(fns)).collect(),
                         span,
                     }),
@@ -196,7 +200,9 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 }
             }
             ExprData::FunctionCall(FunctionCall { target, args, span: _ }) => {
-                target.validate_sidecars_into(fns, errors);
+                if let ExprOrType::Expr(e) = target {
+                    e.validate_sidecars_into(fns, errors);
+                }
                 for arg in args {
                     arg.validate_sidecars_into(fns, errors);
                 }
@@ -268,7 +274,9 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 }
             }
             ExprData::FunctionCall(FunctionCall { target, args, span }) => {
-                foo!(target);
+                if let ExprOrType::Expr(e) = target {
+                    foo!(e);
+                }
                 for expr in args {
                     foo!(expr);
                 }

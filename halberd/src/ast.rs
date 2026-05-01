@@ -138,8 +138,14 @@ impl<'a, S: Sidecars> chumsky::container::Container<Function<'a, S>> for File<'a
 }
 
 #[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
+pub(crate) enum ExprOrType<'a, S: Sidecars = PhaseInitial> {
+    Expr(Box<Expr<'a, S>>),
+    Type(Spanned<types::Type>),
+}
+
+#[derive_where(Debug, Clone, PartialEq; S::Expr, S::Func)]
 pub(crate) struct FunctionCall<'a, S: Sidecars = PhaseInitial> {
-    pub(crate) target: Box<Expr<'a, S>>,
+    pub(crate) target: ExprOrType<'a, S>,
     pub(crate) args: Vec<Expr<'a, S>>,
     pub(crate) span: Span,
 }
