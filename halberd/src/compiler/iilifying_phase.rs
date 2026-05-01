@@ -186,10 +186,10 @@ fn push_expr_to_block_mostly(
                     })
                     .into(),
                 },
-                ast::InfixOp::Divide => todo!(),
-                ast::InfixOp::DotProduct => todo!(),
-                ast::InfixOp::CrossProduct => todo!(),
-                ast::InfixOp::MatrixMultiply => todo!(),
+                ast::InfixOp::Divide => todo!("IL for division"),
+                ast::InfixOp::DotProduct => todo!("IL for dot product"),
+                ast::InfixOp::CrossProduct => todo!("IL for cross product"),
+                ast::InfixOp::MatrixMultiply => todo!("IL for matrix multiplication"),
             };
             block::BlockLocal::Valued(x)
         }

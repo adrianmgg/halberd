@@ -13,7 +13,11 @@
     clippy::wildcard_imports,
     clippy::default_trait_access
 )]
-#![deny(clippy::ignored_unit_patterns, clippy::semicolon_if_nothing_returned)]
+#![deny(
+    clippy::ignored_unit_patterns,
+    clippy::semicolon_if_nothing_returned,
+    clippy::wildcard_enum_match_arm
+)]
 
 pub(crate) mod ast;
 pub(crate) mod compiler;

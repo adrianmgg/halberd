@@ -196,7 +196,27 @@ pub(crate) fn infer_function_call_type(
     scope: ScopeId,
     universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
 ) -> Option<types::Type> {
-    todo!()
+    // types of our args, or return None if any args not yet typed
+    let arg_types: Vec<_> = data
+        .args
+        .iter()
+        .map(|expr| expr.sidecar.r#type().as_ref())
+        .try_collect()?;
+    match &data.target {
+        ast::ExprOrType::Expr(expr) => None,
+        ast::ExprOrType::Type(chumsky::span::Spanned { inner: target, span }) => {
+            if let Some(vec) = target.and_is_vector() {
+                let expected_arg_type: types::Type = vec.component_type.into();
+                // FIXME should we `**a == b` or `a == &&b` ?
+                arg_types
+                    .iter()
+                    .all(|t| **t == expected_arg_type)
+                    .then(|| target.clone())
+            } else {
+                None
+            }
+        }
+    }
 }
 
 pub(crate) fn infer_field_access_type(
