@@ -270,7 +270,7 @@ fn push_expr_to_block_mostly(
                         f::OpExpr::OpCompositeExtract(fops::OpCompositeExtract {
                             ret_type: expr.sidecar.r#type().clone(),
                             op0: target_local,
-                            op1: vec![component_idx.into()],
+                            op1: vec![(component_idx as u32).into()],
                         })
                         .into(),
                     )

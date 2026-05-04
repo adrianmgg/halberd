@@ -17,7 +17,7 @@ pub mod operand_kind {
 
     pub use crate::generated::spv::operand_kind::*;
     use crate::{
-        spv::writer::{SpvWritable, Word},
+        spv::writer::SpvWritable,
         types,
         util::{impl_conversion_2_hop, impl_conversion_enum_variant},
     };
@@ -89,11 +89,13 @@ pub mod operand_kind {
                 digits.push(0u32);
             }
             if sign == Sign::Minus {
-                digits.iter_mut().for_each(|digit| *digit ^= u32::MAX);
+                for digit in &mut digits {
+                    *digit ^= u32::MAX;
+                }
             }
 
             for digit in digits {
-                writer.write_word(digit.into())?;
+                writer.write_word(digit)?;
             }
 
             Ok(())
@@ -114,7 +116,6 @@ pub mod operand_kind {
         Float(LiteralFloat),
     }
     impl_conversion_enum_variant!(LiteralContextDependentNumber::{Integer(LiteralInteger), Float(LiteralFloat)});
-    impl_conversion_2_hop!(BigInt => LiteralInteger => LiteralContextDependentNumber);
     impl_conversion_2_hop!(BigRational => LiteralFloat => LiteralContextDependentNumber);
 
     /// TODO

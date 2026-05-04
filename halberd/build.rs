@@ -25,7 +25,7 @@ fn main() -> eyre::Result<()> {
     let mut mods = Modules(codegen::Scope::new());
 
     let allows = "allow(unused, non_camel_case_types, non_upper_case_globals, clippy::upper_case_acronyms, clippy::enum_variant_names, clippy::doc_markdown, clippy::wildcard_imports)";
-    let prelude = "use crate::{spv::{self, operand_kind as ok, writer::{Word, SpvWriter, SpvWritable}}, iil::{self, block}, types};";
+    let prelude = "use crate::{spv::{self, operand_kind as ok, writer::{ToWord, SpvWriter, SpvWritable}}, iil::{self, block}, types};";
     mods.iil().vis("pub").attr(allows);
     mods.iil_flat().vis("pub").scope().raw(prelude);
     mods.iil_f_instructions().vis("pub").scope().raw(prelude);
@@ -509,12 +509,12 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
             }
             // FIXME needs capabilities
             r#mod(mods)
-                .new_impl("Word")
-                .impl_trait(format!("From<::enumset::EnumSet<{name}>>"))
-                .new_fn("from")
-                .arg("value", format!("::enumset::EnumSet<{name}>"))
-                .ret("Word")
-                .line("value.as_u32().into()");
+                .new_impl(format!("::enumset::EnumSet<{name}>"))
+                .impl_trait("ToWord")
+                .new_fn("to_word")
+                .arg_ref_self()
+                .ret("u32")
+                .line("self.as_u32()");
         }
         spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
             let name = ensure_valid_ident(kind);
@@ -538,12 +538,12 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
             }
 
             r#mod(mods)
-                .new_impl("Word")
-                .impl_trait(format!("From<{name}>"))
-                .new_fn("from")
-                .arg("value", &name)
-                .ret("Word")
-                .line("(value as u32).into()");
+                .new_impl(&name)
+                .impl_trait("ToWord")
+                .new_fn("to_word")
+                .arg_ref_self()
+                .ret("u32")
+                .line("*self as u32");
 
             codegen_hascapabilities(r#mod(mods), &name, |function| {
                 // group the variants which share capabilities together so we can write them in a
@@ -585,12 +585,12 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                 .tuple_field("pub u32");
 
             r#mod(mods)
-                .new_impl("Word")
-                .impl_trait(format!("From<{name}>"))
-                .new_fn("from")
-                .arg("value", &name)
-                .ret("Word")
-                .line("value.0.into()");
+                .new_impl(&name)
+                .impl_trait("ToWord")
+                .new_fn("to_word")
+                .arg_ref_self()
+                .ret("u32")
+                .line("self.0");
         }
         spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
             // (these are each defined manually instead)
