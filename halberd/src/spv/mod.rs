@@ -118,9 +118,18 @@ pub mod operand_kind {
     impl_conversion_enum_variant!(LiteralContextDependentNumber::{Integer(LiteralInteger), Float(LiteralFloat)});
     impl_conversion_2_hop!(BigRational => LiteralFloat => LiteralContextDependentNumber);
 
+    // > A string is interpreted as a nul-terminated stream of characters.
+    // > All string comparisons are case sensitive.
+    // > The character set is Unicode in the UTF-8 encoding scheme.
+    // > The UTF-8 octets (8-bit bytes) are packed four per word,
+    // >  following the little-endian convention (i.e., the first octet is in the lowest-order 8 bits of the word).
+    // > The final word contains the string’s nul-termination character (0),
+    // >  and all contents past the end of the string in the final word are padded with 0.
+    // - SPIR-V spec, 2.2.1. Instructions
     /// TODO
     #[derive(Debug)]
     pub struct LiteralString;
+
     /// TODO
     #[derive(Debug)]
     pub struct LiteralExtInstInteger;
