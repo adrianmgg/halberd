@@ -4,29 +4,101 @@ pub trait HasCapabilities {
     fn capabilities(&self) -> enumset::EnumSet<operand_kind::Capability>;
 }
 
+pub(crate) mod writer;
+
 pub trait Instruction: HasCapabilities {
     fn opcode(&self) -> u32;
 }
 
 pub mod operand_kind {
-    use num_bigint::BigInt;
+    use num_bigint::{BigInt, BigUint};
     use num_rational::BigRational;
+    use num_traits::One;
 
     pub use crate::generated::spv::operand_kind::*;
-    use crate::util::{impl_conversion_2_hop, impl_conversion_enum_variant};
+    use crate::{
+        spv::writer::{SpvWritable, Word},
+        types,
+        util::{impl_conversion_2_hop, impl_conversion_enum_variant},
+    };
 
+    // FIXME these fields should probably be pub right
     #[derive(Debug)]
     pub struct LiteralInteger {
         value: BigInt,
+        r#type: types::Integer,
     }
-    impl From<BigInt> for LiteralInteger {
-        fn from(value: BigInt) -> Self { Self { value } }
+
+    // NOTE could potentially write a generic one for all built in num types w/ num-traits,
+    //      but that seems like it opens up too much opportunity for mistake...
+    impl From<u32> for LiteralInteger {
+        fn from(value: u32) -> Self {
+            Self { value: value.into(), r#type: types::Integer::Unsigned(32) }
+        }
     }
-    impl_conversion_2_hop!(u32 => BigInt => LiteralInteger);
-    impl_conversion_2_hop!(u64 => BigInt => LiteralInteger);
-    impl_conversion_2_hop!(i32 => BigInt => LiteralInteger);
-    impl_conversion_2_hop!(i64 => BigInt => LiteralInteger);
-    impl_conversion_2_hop!(usize => BigInt => LiteralInteger);
+
+    impl SpvWritable for LiteralInteger {
+        fn write_spv_to<W: super::writer::SpvWriter + ?Sized>(
+            &self,
+            writer: &mut W,
+        ) -> Result<(), W::Error> {
+            // > For a numeric literal, the lower-order words appear first.
+            // > If a numeric type’s bit width is less than 32-bits,
+            // >  the value appears in the low-order bits of the word,
+            // >  and the high-order bits must be 0 for a floating-point type or integer type with Signedness of 0,
+            // >  or sign extended for an integer type with a Signedness of 1
+            // >  (similarly for the remaining bits of widths larger than 32 bits but not a multiple of 32 bits).
+            // - SPIR-V spec, 2.2.1. Instructions
+
+            use num_bigint::Sign;
+
+            // TODO should probably special case this w/ some faster versions for most of the normal
+            //      int types we expect to actually encounter
+
+            // TODO should refactor all the checks here to not be panics
+
+            let n_words = self.r#type.bit_width().div_ceil(32);
+            let last_word_bits = match self.r#type.bit_width() % 32 {
+                0 => 32,
+                extra => extra,
+            };
+
+            if !self.r#type.is_signed() {
+                assert!(
+                    self.value.sign() != Sign::Minus,
+                    "LiteralInteger is negative but its type was unsigned"
+                );
+            }
+
+            let unsigned_bound = if self.r#type.is_signed() {
+                if self.value.sign() == Sign::Minus {
+                    BigUint::one() << (self.r#type.bit_width() - 1)
+                } else {
+                    (BigUint::one() << (self.r#type.bit_width() - 1)) - 1u64
+                }
+            } else {
+                BigUint::one() << self.r#type.bit_width()
+            };
+            assert!(
+                self.value.magnitude() <= &unsigned_bound,
+                "LiteralInteger value to big for its type"
+            );
+
+            let (sign, mut digits) = self.value.to_u32_digits();
+            while digits.len() < n_words as usize {
+                digits.push(0u32);
+            }
+            if sign == Sign::Minus {
+                digits.iter_mut().for_each(|digit| *digit ^= u32::MAX);
+            }
+
+            for digit in digits {
+                writer.write_word(digit.into())?;
+            }
+
+            Ok(())
+        }
+    }
 
     #[derive(Debug)]
     pub struct LiteralFloat {

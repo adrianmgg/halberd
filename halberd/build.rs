@@ -25,12 +25,12 @@ fn main() -> eyre::Result<()> {
     let mut mods = Modules(codegen::Scope::new());
 
     let allows = "allow(unused, non_camel_case_types, non_upper_case_globals, clippy::upper_case_acronyms, clippy::enum_variant_names, clippy::doc_markdown, clippy::wildcard_imports)";
-    let prelude = "use crate::{spv::{self, operand_kind as ok}, iil::{self, block}, types};";
+    let prelude = "use crate::{spv::{self, operand_kind as ok, writer::{Word, SpvWriter, SpvWritable}}, iil::{self, block}, types};";
     mods.iil().vis("pub").attr(allows);
     mods.iil_flat().vis("pub").scope().raw(prelude);
     mods.iil_f_instructions().vis("pub").scope().raw(prelude);
     mods.spv().vis("pub").attr(allows);
-    mods.spv_operandkind().vis("pub");
+    mods.spv_operandkind().vis("pub").scope().raw(prelude);
     mods.spv_instruction().vis("pub").scope().raw(prelude);
 
     // pull in the full namespace so we can define things manually there and have the
@@ -508,6 +508,13 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                 );
             }
             // FIXME needs capabilities
+            r#mod(mods)
+                .new_impl("Word")
+                .impl_trait(format!("From<::enumset::EnumSet<{name}>>"))
+                .new_fn("from")
+                .arg("value", format!("::enumset::EnumSet<{name}>"))
+                .ret("Word")
+                .line("value.as_u32().into()");
         }
         spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
             let name = ensure_valid_ident(kind);
@@ -529,6 +536,14 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                 e.new_variant(ensure_valid_ident(&enumerant.enumerant))
                     .discriminant(enumerant.value);
             }
+
+            r#mod(mods)
+                .new_impl("Word")
+                .impl_trait(format!("From<{name}>"))
+                .new_fn("from")
+                .arg("value", &name)
+                .ret("Word")
+                .line("(value as u32).into()");
 
             codegen_hascapabilities(r#mod(mods), &name, |function| {
                 // group the variants which share capabilities together so we can write them in a
@@ -556,30 +571,56 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
             });
         }
         spv_grammar::OperandKind::Id { kind, doc } => {
+            let name = ensure_valid_ident(kind);
+
             // "An <id> always consumes one word."
             // - SPIR-V Specification v1.6r7, 2.2.1
             // "For an operand kind belonging to this category, its value is an <id> definition or reference."
             // - SPIR-V Machine-readable Grammar, 3.2
             r#mod(mods)
-                .new_struct(ensure_valid_ident(kind))
+                .new_struct(ensure_valid_ident(&name))
                 .vis("pub")
                 .doc(clean_doc(doc))
                 .derive("Debug,Copy,Clone,Hash,PartialEq,Eq")
                 .tuple_field("pub u32");
+
+            r#mod(mods)
+                .new_impl("Word")
+                .impl_trait(format!("From<{name}>"))
+                .new_fn("from")
+                .arg("value", &name)
+                .ret("Word")
+                .line("value.0.into()");
         }
         spv_grammar::OperandKind::Literal { kind: _, doc: _ } => {
             // (these are each defined manually instead)
             // TODO maybe write something here that will complain if the manually-defined struct is missing?
         }
         spv_grammar::OperandKind::Composite { kind, bases } => {
+            let name = ensure_valid_ident(kind);
+
             // TODO should maybe just be a type alias to a tuple?
             let t = r#mod(mods)
-                .new_struct(ensure_valid_ident(kind))
+                .new_struct(ensure_valid_ident(&name))
                 .vis("pub")
                 .derive("Debug");
             for base in bases {
                 t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
             }
+
+            let write_spv_impl = r#mod(mods)
+                .new_impl(&name)
+                .impl_trait("SpvWritable")
+                .new_fn("write_spv_to")
+                .generic("W: SpvWriter + ?Sized")
+                .arg_ref_self()
+                .arg("writer", "&mut W")
+                .ret("Result<(), W::Error>");
+
+            for n in 0..(bases.len()) {
+                write_spv_impl.line(format!("writer.write(&self.{})?;", n));
+            }
+            write_spv_impl.line("Ok(())");
         }
     }
 }

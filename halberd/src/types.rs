@@ -117,6 +117,21 @@ pub enum Integer {
     Signed(u32),
 }
 
+impl Integer {
+    pub fn bit_width(&self) -> u32 {
+        match self {
+            Integer::Unsigned(width) | Integer::Signed(width) => *width,
+        }
+    }
+
+    pub fn is_signed(&self) -> bool {
+        match self {
+            Integer::Unsigned(_) => false,
+            Integer::Signed(_) => true,
+        }
+    }
+}
+
 impl Display for Integer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
