@@ -1,4 +1,5 @@
 pub use crate::generated::spv::{OpRetTyped, OpRetUntyped, OpVoid};
+use crate::spv::writer::{SpvWritable, SpvWriter};
 
 pub trait HasCapabilities {
     fn capabilities(&self) -> enumset::EnumSet<operand_kind::Capability>;
@@ -8,6 +9,9 @@ pub(crate) mod writer;
 
 pub trait Instruction: HasCapabilities {
     fn opcode(&self) -> u32;
+    /// essentially a [`writer::SpvWritable::write_spv_to`] implementation, but only writes the non-
+    /// -result-related operands (ie. neither its opcode nor its result type id or result id if any)
+    fn write_operands_to(&self, writer: &mut dyn SpvWriter) -> writer::Result<()>;
 }
 
 pub mod operand_kind {
@@ -17,7 +21,10 @@ pub mod operand_kind {
 
     pub use crate::generated::spv::operand_kind::*;
     use crate::{
-        spv::writer::SpvWritable,
+        spv::{
+            self,
+            writer::{SpvWritable, SpvWriter},
+        },
         types,
         util::{impl_conversion_2_hop, impl_conversion_enum_variant},
     };
@@ -38,10 +45,7 @@ pub mod operand_kind {
     }
 
     impl SpvWritable for LiteralInteger {
-        fn write_spv_to<W: super::writer::SpvWriter + ?Sized>(
-            &self,
-            writer: &mut W,
-        ) -> Result<(), W::Error> {
+        fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> {
             // > For a numeric literal, the lower-order words appear first.
             // > If a numeric type’s bit width is less than 32-bits,
             // >  the value appears in the low-order bits of the word,
@@ -110,6 +114,10 @@ pub mod operand_kind {
         fn from(value: BigRational) -> Self { Self { value } }
     }
 
+    impl SpvWritable for LiteralFloat {
+        fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    }
+
     #[derive(Debug)]
     pub enum LiteralContextDependentNumber {
         Integer(LiteralInteger),
@@ -117,6 +125,10 @@ pub mod operand_kind {
     }
     impl_conversion_enum_variant!(LiteralContextDependentNumber::{Integer(LiteralInteger), Float(LiteralFloat)});
     impl_conversion_2_hop!(BigRational => LiteralFloat => LiteralContextDependentNumber);
+
+    impl SpvWritable for LiteralContextDependentNumber {
+        fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    }
 
     // > A string is interpreted as a nul-terminated stream of characters.
     // > All string comparisons are case sensitive.
@@ -130,12 +142,25 @@ pub mod operand_kind {
     #[derive(Debug)]
     pub struct LiteralString;
 
+    impl SpvWritable for LiteralString {
+        fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    }
+
     /// TODO
     #[derive(Debug)]
     pub struct LiteralExtInstInteger;
+
+    impl SpvWritable for LiteralExtInstInteger {
+        fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    }
+
     /// TODO
     #[derive(Debug)]
     pub struct LiteralSpecConstantOpInteger;
+
+    impl SpvWritable for LiteralSpecConstantOpInteger {
+        fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    }
 }
 
 pub mod instruction {

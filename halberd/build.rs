@@ -350,6 +350,16 @@ fn codegen_instruction<'a>(
         .ret("u32")
         .line(instruction.opcode);
 
+    let impl_instruction_write = impl_instruction
+        .new_fn("write_operands_to")
+        .arg_ref_self()
+        .arg("writer", "&mut dyn SpvWriter")
+        .ret("spv::writer::Result<()>");
+    for operand in &cg_operands.other_operands {
+        impl_instruction_write.line(format!("self.{}.write_spv_to(writer)?;", operand.name));
+    }
+    impl_instruction_write.line("Ok(())");
+
     // we handle types and constants separately & insert them in the final f-iil -> il phase,
     // so no need to output those instructions at all
     let should_generate_iil = !(matches!(instruction.class.as_ref(), "Constant-Creation")
@@ -612,13 +622,12 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                 .new_impl(&name)
                 .impl_trait("SpvWritable")
                 .new_fn("write_spv_to")
-                .generic("W: SpvWriter + ?Sized")
                 .arg_ref_self()
-                .arg("writer", "&mut W")
-                .ret("Result<(), W::Error>");
+                .arg("writer", "&mut dyn SpvWriter")
+                .ret("spv::writer::Result<()>");
 
             for n in 0..(bases.len()) {
-                write_spv_impl.line(format!("writer.write(&self.{})?;", n));
+                write_spv_impl.line(format!("self.{n}.write_spv_to(writer)?;"));
             }
             write_spv_impl.line("Ok(())");
         }
