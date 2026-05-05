@@ -86,6 +86,47 @@ enum InstructionRetKind {
     RetTyped,
     Void,
 }
+impl InstructionRetKind {
+    fn spv_enum_name(&self) -> &'static str {
+        match self {
+            InstructionRetKind::Void => "OpVoid",
+            InstructionRetKind::RetUntyped => "OpRetUntyped",
+            InstructionRetKind::RetTyped => "OpRetTyped",
+        }
+    }
+
+    fn spv_instruction_trait(&self) -> &'static str {
+        match self {
+            InstructionRetKind::Void => "crate::spv::Instruction",
+            InstructionRetKind::RetUntyped => "crate::spv::Instruction",
+            InstructionRetKind::RetTyped => "crate::spv::InstructionRetTyped",
+        }
+    }
+
+    fn flatiil_enum_name(&self) -> &'static str {
+        match self {
+            InstructionRetKind::Void => "OpVoid",
+            InstructionRetKind::RetUntyped => "OpExprUntyped",
+            InstructionRetKind::RetTyped => "OpExpr",
+        }
+    }
+
+    fn flatiil_op_trait(&self) -> &'static str {
+        match self {
+            InstructionRetKind::Void => "iil::f::IilOpVoid",
+            InstructionRetKind::RetUntyped => "iil::f::IilOpExprUntyped",
+            InstructionRetKind::RetTyped => "iil::f::IilOpExpr",
+        }
+    }
+
+    fn flatiil_op_trait_intospvmethodname(&self) -> &'static str {
+        match self {
+            InstructionRetKind::Void => "into_spv_void",
+            InstructionRetKind::RetUntyped => "into_spv_retuntyped",
+            InstructionRetKind::RetTyped => "into_spv_expr",
+        }
+    }
+}
 struct CodegenOperands<'a> {
     ret_kind: InstructionRetKind,
     other_operands: Vec<CodegenOperand<'a>>,
@@ -107,35 +148,34 @@ fn codegen_instructions(
         .collect();
 
     // spv instruction enums
-    for (spv_enum_name, f_enum_name, f_op_trait, irk) in [
-        (
-            "OpVoid",
-            "OpVoid",
-            "iil::f::IilOpVoid",
-            InstructionRetKind::Void,
-        ),
-        (
-            "OpRetUntyped",
-            "OpExprUntyped",
-            "iil::f::IilOpExprUntyped",
-            InstructionRetKind::RetUntyped,
-        ),
-        (
-            "OpRetTyped",
-            "OpExpr",
-            "iil::f::IilOpExpr",
-            InstructionRetKind::RetTyped,
-        ),
+    for irk in [
+        InstructionRetKind::Void,
+        InstructionRetKind::RetUntyped,
+        InstructionRetKind::RetTyped,
     ] {
-        let spv_enum = mods.spv().new_enum(spv_enum_name).vis("pub");
-        for inst in &instruction_infos {
-            if inst.operands.ret_kind != irk {
-                continue;
-            }
+        let spv_enum = mods.spv().new_enum(irk.spv_enum_name()).vis("pub");
+        let relevant_instructions = || {
+            instruction_infos
+                .iter()
+                .filter(|inst| inst.operands.ret_kind == irk)
+        };
+        for inst in relevant_instructions() {
             spv_enum
                 .new_variant(&inst.name)
                 .tuple(format!("instruction::{}", &inst.name));
         }
+
+        let spv_enum_impl = mods.spv().new_impl(irk.spv_enum_name());
+        let todyninnerimpl = spv_enum_impl
+            .new_fn("as_dyn_instruction")
+            .vis("pub")
+            .arg_ref_self()
+            .ret(format!("&dyn {}", irk.spv_instruction_trait()));
+        todyninnerimpl.line("match self {");
+        for inst in relevant_instructions() {
+            todyninnerimpl.line(format!("Self::{name}(o) => o,", name = inst.name));
+        }
+        todyninnerimpl.line("}");
 
         fn gen_from_impl(
             module: &mut codegen::Module,
@@ -152,18 +192,20 @@ fn codegen_instructions(
                 .ret(enum_name)
                 .line(format!("{enum_name}::{variant}(x)", variant = &inst.name));
         }
-        for inst in &instruction_infos {
-            if inst.operands.ret_kind != irk {
-                continue;
-            }
-            gen_from_impl(mods.spv(), spv_enum_name, "instruction", inst);
+        for inst in relevant_instructions() {
+            gen_from_impl(mods.spv(), irk.spv_enum_name(), "instruction", inst);
             if inst.is_iil {
-                gen_from_impl(mods.iil_flat(), f_enum_name, "instruction", inst);
+                gen_from_impl(
+                    mods.iil_flat(),
+                    irk.flatiil_enum_name(),
+                    "instruction",
+                    inst,
+                );
             }
         }
 
         let f_op_enum = (mods.iil_flat())
-            .new_enum(f_enum_name)
+            .new_enum(irk.flatiil_enum_name())
             .vis("pub")
             .derive("Debug");
         instruction_infos
@@ -176,7 +218,7 @@ fn codegen_instructions(
             });
 
         let f_op_enum_renumberable = (mods.iil_flat())
-            .new_impl(f_enum_name)
+            .new_impl(irk.flatiil_enum_name())
             .impl_trait("block::Renumberable");
         let f_op_enum_renumber = f_op_enum_renumberable
             .new_fn("renumber")
@@ -184,9 +226,8 @@ fn codegen_instructions(
             .arg("from", "block::BlockLocalRef")
             .arg("to", "block::BlockLocalRef");
         f_op_enum_renumber.line("match self {");
-        instruction_infos
-            .iter()
-            .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+        relevant_instructions()
+            .filter(|ii| ii.is_iil)
             .for_each(|ii| {
                 f_op_enum_renumber.line(format!(
                     "Self::{name}(o) => o.renumber(from, to),",
@@ -196,14 +237,10 @@ fn codegen_instructions(
         f_op_enum_renumber.line("}");
 
         let f_op_enum_impl = (mods.iil_flat())
-            .new_impl(f_enum_name)
-            .impl_trait(f_op_trait);
+            .new_impl(irk.flatiil_enum_name())
+            .impl_trait(irk.flatiil_op_trait());
         let f_op_enum_impl_into = f_op_enum_impl
-            .new_fn(match irk {
-                InstructionRetKind::RetTyped => "into_spv_expr",
-                InstructionRetKind::RetUntyped => "into_spv_retuntyped",
-                InstructionRetKind::Void => "into_spv_void",
-            })
+            .new_fn(irk.flatiil_op_trait_intospvmethodname())
             .generic("MapRefs: Fn(block::BlockLocalRef) -> ok::IdRef");
         if matches!(irk, InstructionRetKind::RetTyped) {
             f_op_enum_impl_into.generic("MapTypes: Fn(types::Type) -> ok::IdResultType");
@@ -212,25 +249,20 @@ fn codegen_instructions(
         if matches!(irk, InstructionRetKind::RetTyped) {
             f_op_enum_impl_into.arg("map_types", "MapTypes");
         }
-        f_op_enum_impl_into.ret(format!("spv::{spv_enum_name}"));
+        f_op_enum_impl_into.ret(format!("spv::{}", irk.spv_enum_name()));
         let argstr = match irk {
             InstructionRetKind::RetTyped => "map_refs, map_types",
             InstructionRetKind::RetUntyped => "map_refs",
             InstructionRetKind::Void => "map_refs",
         };
-        let intospvfn = match irk {
-            InstructionRetKind::RetUntyped => "into_spv_retuntyped",
-            InstructionRetKind::RetTyped => "into_spv_expr",
-            InstructionRetKind::Void => "into_spv_void",
-        };
         f_op_enum_impl_into.line("match self {");
-        instruction_infos
-            .iter()
-            .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+        relevant_instructions()
+            .filter(|ii| ii.is_iil)
             .for_each(|ii| {
                 f_op_enum_impl_into.line(format!(
                     "Self::{name}(x) => x.{intospvfn}({argstr}),",
-                    name = ii.name
+                    name = ii.name,
+                    intospvfn = irk.flatiil_op_trait_intospvmethodname(),
                 ));
             });
         f_op_enum_impl_into.line("}");
@@ -241,9 +273,8 @@ fn codegen_instructions(
                 .arg_ref_self()
                 .ret("&types::Type");
             f_op_enum_impl_rt.line("match self {");
-            instruction_infos
-                .iter()
-                .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+            relevant_instructions()
+                .filter(|ii| ii.is_iil)
                 .for_each(|ii| {
                     f_op_enum_impl_rt
                         .line(format!("Self::{name}(x) => x.ret_type(),", name = ii.name));
@@ -359,6 +390,20 @@ fn codegen_instruction<'a>(
         impl_instruction_write.line(format!("self.{}.write_spv_to(writer)?;", operand.name));
     }
     impl_instruction_write.line("Ok(())");
+
+    // RetTyped instructions specifically also need to impl the InstructionRetTyped trait
+    if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
+        // InstructionRetTyped
+        let impl_irt = r#mod(mods)
+            .new_impl(&name)
+            .impl_trait("crate::spv::InstructionRetTyped");
+        // InstructionRetTyped::ret_type
+        impl_irt
+            .new_fn("ret_type")
+            .arg_ref_self()
+            .ret("&ok::IdResultType")
+            .line("&self.ret_type");
+    }
 
     // we handle types and constants separately & insert them in the final f-iil -> il phase,
     // so no need to output those instructions at all

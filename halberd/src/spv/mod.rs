@@ -14,6 +14,54 @@ pub trait Instruction: HasCapabilities {
     fn write_operands_to(&self, writer: &mut dyn SpvWriter) -> writer::Result<()>;
 }
 
+pub trait InstructionRetTyped: Instruction {
+    fn ret_type(&self) -> &operand_kind::IdResultType;
+}
+
+impl OpVoid {
+    fn write_instruction(&self, writer: &mut dyn SpvWriter) -> writer::Result<()> {
+        let inst = self.as_dyn_instruction();
+        // opcode
+        writer.write_word(inst.opcode())?;
+        // ...operands
+        inst.write_operands_to(writer)
+    }
+}
+
+impl OpRetUntyped {
+    fn write_instruction(
+        &self,
+        writer: &mut dyn SpvWriter,
+        result_id: operand_kind::IdResult,
+    ) -> writer::Result<()> {
+        let inst = self.as_dyn_instruction();
+        // opcode
+        writer.write_word(inst.opcode())?;
+        // Result <id>
+        result_id.write_spv_to(writer)?;
+        // ...operands
+        inst.write_operands_to(writer)
+    }
+}
+
+impl OpRetTyped {
+    fn write_instruction(
+        &self,
+        writer: &mut dyn SpvWriter,
+        result_id: operand_kind::IdResult,
+    ) -> writer::Result<()> {
+        let inst = self.as_dyn_instruction();
+        // opcode
+        writer.write_word(inst.opcode())?;
+        // <id> Result Type
+        inst.ret_type().write_spv_to(writer)?;
+        // Result <id>
+        result_id.write_spv_to(writer)?;
+        // ...operands
+        inst.write_operands_to(writer)
+    }
+}
+
 pub mod operand_kind {
     use num_bigint::{BigInt, BigUint};
     use num_rational::BigRational;
