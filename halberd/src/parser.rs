@@ -165,6 +165,19 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                 .spanned()
                 .map(ExprData::LiteralBool)
                 .map(Expr::from),
+            // foo = ...
+            ident
+                .then_ignore(just(Symbol::Equals))
+                .then(expr_boxed.clone())
+                .spanned()
+                .map(
+                    |Spanned { span, inner: (target, value) }| ExprData::Assignment {
+                        target,
+                        value,
+                        span,
+                    },
+                )
+                .map(Expr::from),
             // foo
             ident.map(ExprData::Var).map(Expr::from),
             // let name = ...

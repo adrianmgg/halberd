@@ -35,6 +35,11 @@ pub(crate) enum ExprData<'a, S: Sidecars = PhaseInitial> {
     Block(Spanned<Block<'a, S>>),
     FunctionCall(FunctionCall<'a, S>),
     FieldAccess(FieldAccess<'a, S>),
+    Assignment {
+        target: Spanned<Cow<'a, str>>,
+        value: Box<Expr<'a, S>>,
+        span: Span,
+    },
 }
 
 impl<S: Sidecars> Expr<'_, S> {
@@ -52,7 +57,8 @@ impl<S: Sidecars> ExprData<'_, S> {
             | ExprData::InfixOp(_, Spanned { span, .. }, _)
             | ExprData::Declaration { name: Spanned { span, .. }, r#type: _, value: _ }
             | ExprData::FunctionCall(FunctionCall { span, .. })
-            | ExprData::FieldAccess(FieldAccess { span, .. }) => *span,
+            | ExprData::FieldAccess(FieldAccess { span, .. })
+            | ExprData::Assignment { span, .. } => *span,
         }
     }
 }

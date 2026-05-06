@@ -438,6 +438,7 @@ pub(crate) fn r#type<'src>() -> impl Parser<'src, &'src str, types::Type, LexExt
     let matrix_suffix = just('m').ignore_then(n.then_ignore(just('x')).then(n));
     let nk = number_kind();
     choice((
+        just("void").to(types::Void.into()),
         // e.g. 'i32v4'
         nk.then(vector_suffix)
             .map(|(component_type, component_count)| {

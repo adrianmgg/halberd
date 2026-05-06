@@ -26,6 +26,9 @@ pub(super) fn populate_scopes<'a>(
         expr: &mut |_, car| car.with_scope_none(),
     });
 
+    // FIXME more temp hardcoded stuff. remove me eventually
+    universe.root_scope_mut().insert("f_color", ());
+
     let root_scope = universe.root_scope_id();
     e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {
         func: |universe: &mut scope::Universe<_>,
@@ -63,7 +66,8 @@ pub(super) fn populate_scopes<'a>(
                         | ast::ExprData::Var(..)
                         | ast::ExprData::InfixOp(..)
                         | ast::ExprData::FunctionCall(..)
-                        | ast::ExprData::FieldAccess(..) => super_scope,
+                        | ast::ExprData::FieldAccess(..)
+                        | ast::ExprData::Assignment { .. } => super_scope,
                         // blocks get a new scope
                         ast::ExprData::Block(..) =>
                             universe.get_scope_mut(super_scope).new_subscope(),

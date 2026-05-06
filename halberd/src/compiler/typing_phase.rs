@@ -30,6 +30,23 @@ pub(crate) fn populate_types<'a>(
     });
     let mut universe = universe.map(|()| NamespaceItemPartiallyTyped::default());
 
+    // FIXME more temp hardcoded stuff. remove me eventually
+    universe.root_scope_mut().lookup_and_modify("f_color", |a| {
+        a.r#type = Some(
+            types::Pointer {
+                storage_class: ok::StorageClass::Output,
+                target: Box::new(
+                    types::Vector {
+                        component_type: types::Float { width: 32 }.into(),
+                        component_count: 4,
+                    }
+                    .into(),
+                ),
+            }
+            .into(),
+        );
+    });
+
     // infer types
     e.iteratively_modify_sidecars_2(&mut universe, (), &SidecarFns {
         func: |universe: &mut scope::Universe<_>,
@@ -203,6 +220,8 @@ fn infer_expr_type(
         },
         ast::ExprData::FunctionCall(fc) => infer_function_call_type(fc, scope, universe),
         ast::ExprData::FieldAccess(fa) => infer_field_access_type(fa, scope, universe),
+        // FIXME needs check that assignment value is correct type
+        ast::ExprData::Assignment { .. } => Some(types::Void.into()),
     }
 }
 

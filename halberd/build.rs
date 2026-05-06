@@ -51,7 +51,7 @@ fn main() -> eyre::Result<()> {
         .scope()
         .raw("use crate::spv::operand_kind::*;");
     for operand_kind in &grammar.operand_kinds {
-        codegen_operand_kind(&mut mods, operand_kind);
+        codegen_operand_kind(&mut mods, operand_kind, &grammar);
     }
 
     codegen_instructions(&grammar, &mut mods, grammar.instructions.as_slice());
@@ -565,7 +565,11 @@ fn codegen_instruction<'a>(
     }
 }
 
-fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandKind) {
+fn codegen_operand_kind(
+    mods: &mut Modules,
+    operand_kind: &spv_grammar::OperandKind,
+    grammar: &spv_grammar::Grammar,
+) {
     let r#mod = Modules::spv_operandkind;
     match operand_kind {
         // https://registry.khronos.org/SPIR-V/specs/unified1/MachineReadableGrammar.html#bitenum-operand-kind
@@ -607,31 +611,106 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
         spv_grammar::OperandKind::ValueEnum { kind, enumerants } => {
             let name = ensure_valid_ident(kind);
             let e = r#mod(mods).new_enum(&name).vis("pub");
-            match kind.as_ref() {
-                "Capability" => {
-                    e.repr("u32")
-                        .derive("Debug")
-                        .derive("::enumset::EnumSetType")
-                        .r#macro(r##"#[enumset(map = "compact")]"##);
-                }
-                _ => {
-                    e.repr("u32").derive("Debug,Copy,Clone,PartialEq,Eq,Hash");
-                }
+            let has_any_params = enumerants
+                .iter()
+                .any(|enumerant| enumerant.parameters.is_some());
+            if matches!(kind.as_ref(), "Capability") {
+                e.repr("u32")
+                    .derive("Debug")
+                    .derive("::enumset::EnumSetType")
+                    .r#macro(r##"#[enumset(map = "compact")]"##);
+            } else if has_any_params {
+                e.derive("Debug,Clone,PartialEq,Eq,Hash");
+            } else {
+                e.repr("u32").derive("Debug,Copy,Clone,PartialEq,Eq,Hash");
             }
             for enumerant in enumerants {
                 // FIXME need to use version,capabilities
                 // TODO should use aliases
-                e.new_variant(ensure_valid_ident(&enumerant.enumerant))
-                    .discriminant(enumerant.value);
+                let variant = e.new_variant(ensure_valid_ident(&enumerant.enumerant));
+                if has_any_params {
+                    if let Some(params) = &enumerant.parameters {
+                        for param in params {
+                            let mut param_type = format!("ok::{}", ensure_valid_ident(&param.kind));
+                            let param_is_bit_enum = grammar.operand_kinds.iter()
+                                .any(|ok| matches!(ok, spv_grammar::OperandKind::BitEnum { kind, .. } if kind[..] == param.kind[..]));
+                            if param_is_bit_enum {
+                                param_type = format!("::enumset::EnumSet<{param_type}>");
+                            }
+                            variant.tuple(param_type);
+                        }
+                    }
+                } else {
+                    variant.discriminant(enumerant.value);
+                }
             }
 
-            r#mod(mods)
-                .new_impl(&name)
-                .impl_trait("ToWord")
-                .new_fn("to_word")
-                .arg_ref_self()
-                .ret("u32")
-                .line("*self as u32");
+            if has_any_params {
+                let impl_writable = r#mod(mods).new_impl(&name).impl_trait("SpvWritable");
+
+                let write_spv_impl = impl_writable
+                    .new_fn("write_spv_to")
+                    .arg_ref_self()
+                    .arg("writer", "&mut dyn SpvWriter")
+                    .ret("spv::writer::Result<()>");
+                write_spv_impl.line("match self {");
+                for enumerant in enumerants {
+                    let enumerant_name = ensure_valid_ident(&enumerant.enumerant);
+                    if let Some(params) = &enumerant.parameters {
+                        let param_match_names = (0..params.len())
+                            .map(|i| format!("p{i}"))
+                            .collect::<Vec<_>>();
+                        write_spv_impl.line(format!(
+                            "Self::{enumerant_name}({}) => {{ writer.write_word({}u32)?;",
+                            param_match_names.join(","),
+                            enumerant.value
+                        ));
+                        for m in param_match_names {
+                            write_spv_impl.line(format!("{m}.write_spv_to(writer)?;"));
+                        }
+                        write_spv_impl.line("Ok(()) }");
+                    } else {
+                        write_spv_impl.line(format!(
+                            "Self::{enumerant_name} => writer.write_word({}u32),",
+                            enumerant.value
+                        ));
+                    }
+                }
+                write_spv_impl.line("}");
+
+                let impl_writable_tell = impl_writable
+                    .new_fn("tell_spv_wordcount")
+                    .arg_ref_self()
+                    .ret("u16");
+                impl_writable_tell.line("match self {");
+                for enumerant in enumerants {
+                    let enumerant_name = ensure_valid_ident(&enumerant.enumerant);
+                    if let Some(params) = &enumerant.parameters {
+                        let param_match_names = (0..params.len())
+                            .map(|i| format!("p{i}"))
+                            .collect::<Vec<_>>();
+                        impl_writable_tell.line(format!(
+                            "Self::{enumerant_name}({}) => 1",
+                            param_match_names.join(",")
+                        ));
+                        for m in param_match_names {
+                            impl_writable_tell.line(format!("+ {m}.tell_spv_wordcount()"));
+                        }
+                        impl_writable_tell.line(",");
+                    } else {
+                        impl_writable_tell.line(format!("Self::{enumerant_name} => 1,"));
+                    }
+                }
+                impl_writable_tell.line("}");
+            } else {
+                r#mod(mods)
+                    .new_impl(&name)
+                    .impl_trait("ToWord")
+                    .new_fn("to_word")
+                    .arg_ref_self()
+                    .ret("u32")
+                    .line("*self as u32");
+            }
 
             codegen_hascapabilities(r#mod(mods), &name, |function| {
                 // group the variants which share capabilities together so we can write them in a
@@ -641,10 +720,13 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                     let name = ensure_valid_ident(&enumerant.enumerant);
                     let caps: Vec<_> = enumerant.capabilities.iter().flatten().collect();
                     let expr = codegen_capability_set(&caps);
-                    cap2cases
-                        .entry(expr)
-                        .or_insert_with(Vec::new)
-                        .push(format!("Self::{name}"));
+                    cap2cases.entry(expr).or_insert_with(Vec::new).push(
+                        if enumerant.parameters.is_some() {
+                            format!("Self::{name}(..)")
+                        } else {
+                            format!("Self::{name}")
+                        },
+                    );
                 }
                 if cap2cases.len() == 1 {
                     // if homogeneous, don't bother writing a match, just put the expr directly
@@ -843,6 +925,13 @@ mod spv_grammar {
         pub value: u32,
         pub version: Option<String>,
         pub capabilities: Option<Vec<String>>,
+        pub parameters: Option<Vec<ValueEnumerantParameter>>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct ValueEnumerantParameter {
+        pub kind: String,
+        pub name: Option<String>,
     }
 
     fn hex_literal<'de, D>(deserializer: D) -> Result<u32, D::Error>

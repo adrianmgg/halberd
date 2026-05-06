@@ -1,6 +1,6 @@
 use num_bigint::{BigInt, BigUint};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, ToPrimitive};
 
 pub use crate::generated::spv::operand_kind::*;
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 };
 
 // FIXME these fields should probably be pub right
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LiteralInteger {
     pub value: BigInt,
     pub r#type: types::Integer,
@@ -91,19 +91,50 @@ impl SpvWritable for LiteralInteger {
     fn tell_spv_wordcount(&self) -> u16 { self.r#type.bit_width().div_ceil(32) as u16 }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LiteralFloat {
     pub value: BigRational,
     pub r#type: types::Float,
 }
 
 impl SpvWritable for LiteralFloat {
-    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> {
+        match self.r#type.width {
+            32 => {
+                let bytes = self
+                    .value
+                    .to_f32()
+                    .expect("value not representable as a 32-bit float")
+                    .to_be_bytes();
+                let words = bytes
+                    .chunks_exact(4)
+                    .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()));
+                for word in words {
+                    writer.write_word(word)?;
+                }
+            }
+            64 => {
+                let bytes = self
+                    .value
+                    .to_f64()
+                    .expect("value not representable as a 64-bit float")
+                    .to_be_bytes();
+                let words = bytes
+                    .chunks_exact(4)
+                    .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()));
+                for word in words {
+                    writer.write_word(word)?;
+                }
+            }
+            _ => todo!(),
+        }
+        Ok(())
+    }
 
-    fn tell_spv_wordcount(&self) -> u16 { todo!() }
+    fn tell_spv_wordcount(&self) -> u16 { self.r#type.width.div_ceil(32) as u16 }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum LiteralContextDependentNumber {
     Integer(LiteralInteger),
     Float(LiteralFloat),
@@ -126,7 +157,7 @@ impl SpvWritable for LiteralContextDependentNumber {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LiteralString {
     pub value: Box<str>,
 }
@@ -183,7 +214,7 @@ impl SpvWritable for LiteralString {
 }
 
 /// TODO
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LiteralExtInstInteger;
 
 impl SpvWritable for LiteralExtInstInteger {
@@ -193,7 +224,7 @@ impl SpvWritable for LiteralExtInstInteger {
 }
 
 /// TODO
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LiteralSpecConstantOpInteger;
 
 impl SpvWritable for LiteralSpecConstantOpInteger {

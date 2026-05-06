@@ -46,6 +46,34 @@ pub(super) fn process_file(
         }
     });
 
+    // FIXME temp. hardcoded stuff, remove this all eventually
+    let mut frag_color = None;
+    let frag_color_type: types::Type = types::Pointer {
+        storage_class: ok::StorageClass::Output,
+        target: Box::new(
+            types::Vector {
+                component_type: types::Float { width: 32 }.into(),
+                component_count: 4,
+            }
+            .into(),
+        ),
+    }
+    .into();
+    let mut main_inputs_block: block::Block<Never, f::OpExpr, ()> =
+        blockctx.new_block(|blockbuilder, blockctx| {
+            frag_color = Some(blockbuilder.push_valued_local(f::OpExpr::OpVariable(
+                fops::OpVariable {
+                    ret_type: frag_color_type.clone(),
+                    op0: ok::StorageClass::Output,
+                    op1: None,
+                },
+            )));
+        });
+    let frag_color = frag_color.unwrap();
+    universe
+        .root_scope_mut()
+        .lookup_and_modify("f_color", |a| a.block_ref = Some(frag_color));
+
     let fns = forward_fns.map_mut(
         identity,
         |(_, function)| process_function(function, universe, blockctx),
@@ -59,19 +87,21 @@ pub(super) fn process_file(
             control: func.control,
             r#type: func.r#type,
             body: flatten(func.body, blockctx),
+            is_main: func.is_main,
         },
         identity,
     );
     dbg!(&fns);
 
     eprintln!("================ type instructions ================");
-    let all_types_needed = fns
+    let mut all_types_needed: HashSet<types::Type> = fns
         .locals_valued_only()
         .flat_map(|(_, func)| func.types_referenced())
         .collect::<HashSet<_>>()
         .into_iter()
         .map(Cow::into_owned)
         .collect();
+    all_types_needed.insert(frag_color_type);
     let (type_ops_block, mut type2local) =
         iil_phase_part2::types_to_asm(all_types_needed, blockctx);
     dbg!(&type_ops_block, &type2local);
@@ -93,6 +123,8 @@ pub(super) fn process_file(
         constant_ops_block,
         &constant2local,
         &mut type2local,
+        main_inputs_block,
+        frag_color,
     );
     dbg!(&sewn_together);
 
@@ -157,6 +189,7 @@ pub(super) fn process_file(
     };
 }
 
+#[allow(clippy::too_many_arguments, reason = "https://youtu.be/NPwyyjtxlzU")]
 /// sew everything together. very hardcoded for now
 fn sew_everything_together(
     blockctx: &mut block::Ctx,
@@ -165,6 +198,8 @@ fn sew_everything_together(
     constant_ops_block: block::Block<Never, f::OpExpr, ()>,
     constant2local: &HashMap<h::Constant, block::BlockLocalRef>,
     type2local: &mut HashMap<types::Type, block::BlockLocalRef>,
+    main_inputs_block: block::Block<Never, f::OpExpr, ()>,
+    frag_color: block::BlockLocalRef,
 ) -> block::Block<f::OpVoid, f::OpAnyValued, ()> {
     let mut renumbers = HashMap::<block::BlockLocalRef, block::BlockLocalRef>::new();
     let mut sewn_together = blockctx.new_block(|blockbuilder, blockctx| {
@@ -178,15 +213,27 @@ fn sew_everything_together(
             op0: ok::AddressingModel::Logical,
             op1: ok::MemoryModel::GLSL450,
         }));
-        // blockbuilder.push_void_local(
-        //     fops::OpEntryPoint {
-        //         op0: ok::ExecutionModel::Fragment,
-        //         op1: fns.locals_valued_only().find(|(_, f)| f),
-        //         op2: todo!(),
-        //         op3: todo!(),
-        //     }
-        //     .into(),
-        // );
+
+        let main_fn = fns
+            .locals_valued_only()
+            .find(|(_ref, function)| function.is_main)
+            .map(|(r#ref, _function)| r#ref);
+
+        if let Some(main_fn) = main_fn {
+            blockbuilder.push_void_local(
+                fops::OpEntryPoint {
+                    op0: ok::ExecutionModel::Fragment,
+                    op1: main_fn,
+                    op2: ok::LiteralString { value: "main".into() },
+                    op3: vec![frag_color],
+                }
+                .into(),
+            );
+            blockbuilder.push_void_local(f::OpVoid::OpDecorate(fops::OpDecorate {
+                op0: frag_color,
+                op1: ok::Decoration::Location(0u32.into()),
+            }));
+        }
 
         let (type_ops, ()) = type_ops_block.into_parts();
         for (r, t) in type_ops {
@@ -198,6 +245,14 @@ fn sew_everything_together(
 
         let (constant_ops, ()) = constant_ops_block.into_parts();
         for (r, t) in constant_ops {
+            renumbers.insert(
+                r,
+                blockbuilder.push_valued_local(t.into_valued_always().into()),
+            );
+        }
+
+        let (main_input_ops, ()) = main_inputs_block.into_parts();
+        for (r, t) in main_input_ops {
             renumbers.insert(
                 r,
                 blockbuilder.push_valued_local(t.into_valued_always().into()),
@@ -334,6 +389,7 @@ fn process_function(
             // (no OpFunctionEnd here b/c currently we wait until later when converting to spv to
             //  emit that)
         }),
+        is_main: function.data.name.inner == "main",
     }
 }
 
@@ -538,6 +594,26 @@ fn push_expr_to_block_mostly(
                     "trying to generate IL for field access which shouldnt have passed type-checking"
                 );
             }
+        }
+        ast::ExprData::Assignment { target, value, span } => {
+            // FIXME don't unwrap
+            let var_br = universe
+                .get_scope(expr.sidecar.scope())
+                .lookup(target.inner.as_ref())
+                .unwrap()
+                .block_ref
+                .unwrap();
+
+            let value_br = push_expr_to_block_mostly(*value, universe, blockbuilder, blockctx);
+            // FIXME don't unwrap
+            let value_br = matches_opt!(value_br, block::BlockLocal::Valued(v) => v).unwrap();
+            let value_br = blockbuilder.push_valued_local(value_br);
+
+            block::BlockLocal::Void(f::OpVoid::OpStore(fops::OpStore {
+                op0: var_br,
+                op1: value_br,
+                op2: None,
+            }))
         }
     }
 }

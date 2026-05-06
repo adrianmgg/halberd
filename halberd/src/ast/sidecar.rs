@@ -164,6 +164,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                         field,
                         span,
                     }),
+                ExprData::Assignment { target, value, span } =>
+                    ExprData::Assignment { target, value: Box::new(value.map_sidecars(fns)), span },
             },
         }
     }
@@ -210,6 +212,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
             }
             ExprData::FieldAccess(FieldAccess { target, field: _, span: _ }) =>
                 target.validate_sidecars_into(fns, errors),
+            ExprData::Assignment { target, value, span } =>
+                value.validate_sidecars_into(fns, errors),
         }
     }
 
@@ -284,6 +288,9 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
             }
             ExprData::FieldAccess(FieldAccess { target, .. }) => {
                 foo!(target);
+            }
+            ExprData::Assignment { target, value, span } => {
+                foo!(value);
             }
         }
 
