@@ -92,7 +92,9 @@
         };
         devShells.default = craneLib.devShell {
           # checks = self.checks.${system};
-          packages = [];
+          packages = [
+            pkgs.spirv-tools
+          ];
           inherit SPIRV_GRAMMAR_JSON;
         };
       }

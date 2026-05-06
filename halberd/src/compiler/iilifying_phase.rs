@@ -252,7 +252,30 @@ fn push_expr_to_block_mostly(
             let block_ref = var_info.block_ref.unwrap();
             block::BlockLocal::Valued(block_ref.into())
         }
-        ast::ExprData::FunctionCall(function_call) => todo!("IL for function calls & ctors"),
+        ast::ExprData::FunctionCall(function_call) => {
+            let ast::FunctionCall { target, args, span: _ } = function_call;
+            match target {
+                ast::ExprOrType::Expr(expr) => todo!(),
+                ast::ExprOrType::Type(target) =>
+                    if let Some(vec) = target.and_is_vector() {
+                        let args_pushed = args.into_iter().map(|arg| {
+                            let arg =
+                                push_expr_to_block_mostly(arg, universe, blockbuilder, blockctx);
+                            let arg = matches_opt!(arg, block::BlockLocal::Valued(v) => v).unwrap();
+                            blockbuilder.push_valued_local(arg)
+                        });
+                        block::BlockLocal::Valued(
+                            f::OpExpr::OpCompositeConstruct(fops::OpCompositeConstruct {
+                                ret_type: expr.sidecar.r#type().clone(),
+                                op0: args_pushed.collect(),
+                            })
+                            .into(),
+                        )
+                    } else {
+                        todo!()
+                    },
+            }
+        }
         ast::ExprData::FieldAccess(ast::FieldAccess { target, field, span }) => {
             let target_type = target.sidecar.r#type();
             if let Some(vec) = target_type.and_is_vector() {

@@ -3,6 +3,8 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use prelude::*;
+
 use crate::{
     spv::operand_kind,
     util::{
@@ -210,6 +212,11 @@ impl Display for Pointer {
     }
 }
 
+// TODO need more of these impls
+impl PartialEq<Type> for NumberKind {
+    fn eq(&self, other: &Type) -> bool { other.and_is_number().is_some_and(|n| self == n) }
+}
+
 macro_rules! mk_option_helper_exts {
     (
         $life:lifetime ;
@@ -273,7 +280,9 @@ pub mod prelude {
         ExtVector(&'a Vector) {
             // FIXME naming for `and_to_component_type`
             and_to_component_type -> &'a NumberKind = v => { Some(&v.component_type) }
+            and_to_component_count -> u32 = v => { Some(v.component_count) }
             and_has_n_components(n: u32) -> &'a Vector = v => { (v.component_count == n).then_some(v) }
+            and_has_component_type(expected: &'a Type) -> &'a Vector = v => { (&v.component_type == expected).then_some(v) }
         };
         ExtMatrix(&'a Matrix) {
             to_component_type -> NumberKind = m => { Some(m.column_type.component_type) }

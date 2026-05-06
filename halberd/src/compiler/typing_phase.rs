@@ -121,7 +121,7 @@ pub(crate) fn populate_types<'a>(
     Ok((e, universe))
 }
 
-pub(crate) fn infer_expr_type(
+fn infer_expr_type(
     data: &ast::ExprData<'_, PhasePartiallyTyped>,
     scope: ScopeId,
     universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
@@ -191,7 +191,7 @@ pub(crate) fn infer_expr_type(
     }
 }
 
-pub(crate) fn infer_function_call_type(
+fn infer_function_call_type(
     data: &ast::FunctionCall<'_, PhasePartiallyTyped>,
     scope: ScopeId,
     universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,
@@ -206,11 +206,30 @@ pub(crate) fn infer_function_call_type(
         ast::ExprOrType::Expr(expr) => None,
         ast::ExprOrType::Type(chumsky::span::Spanned { inner: target, span }) => {
             if let Some(vec) = target.and_is_vector() {
+                // > OpCompositeConstruct
+                // > ... Result Type must be a composite type, whose top-level members/elements/components/columns have the same type as the types of the operands
+                // > ... for constructing a vector, the operands may also be vectors with the same component type as the Result Type component type.
+                // > If constructing a vector, the total number of components in all the operands must equal the number of components in Result Type.
+                // -spec
+
                 let expected_arg_type: types::Type = vec.component_type.into();
-                // FIXME should we `**a == b` or `a == &&b` ?
+
                 arg_types
-                    .iter()
-                    .all(|t| **t == expected_arg_type)
+                    .into_iter()
+                    // count up how many components are provided, short-circuiting out to a failure if
+                    // any incorrectly-typed components provided
+                    .map(|arg_type| {
+                        (arg_type == &expected_arg_type).then_some(1).or_else(|| {
+                            arg_type
+                                .and_is_vector()
+                                .and_has_component_type(&expected_arg_type)
+                                .and_to_component_count()
+                        })
+                    })
+                    .try_fold(0u32, |acc, cur| try { acc + cur? })
+                    // require that to equal the expected number of components
+                    .is_some_and(|component_count| component_count == vec.component_count)
+                    // if so, we successfully construct one of those vectors
                     .then(|| target.clone())
             } else {
                 None
@@ -219,7 +238,7 @@ pub(crate) fn infer_function_call_type(
     }
 }
 
-pub(crate) fn infer_field_access_type(
+fn infer_field_access_type(
     data: &ast::FieldAccess<'_, PhasePartiallyTyped>,
     scope: ScopeId,
     universe: &mut scope::Universe<NamespaceItemPartiallyTyped>,

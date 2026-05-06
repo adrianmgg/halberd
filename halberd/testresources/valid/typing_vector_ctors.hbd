@@ -1,0 +1,19 @@
+$. TODO return type of this should be void
+$fn foo(x: r32, y: r32, z: r32, w: r32): u8 = ({
+	$. constructing vectors from scalars
+	let a1: r32v1 = r32v1(x);
+	let a2: r32v2 = r32v3(x, y);
+	let a3: r32v3 = r32v3(x, y, z);
+	let a4: r32v4 = r32v4(x, y, z, w);
+
+	$. constructing vectors from vectors
+	let b1: r32v4 = r32v4(a3, a1);
+	let b2: r32v4 = r32v4(a2, a2);
+	let b3: r32v4 = r32v4(a4);
+
+	$. constructing vectors from mix of vectors and scalars
+	let c1: r32v4 = r32v4(a3, w);
+	let c2: r32v4 = r32v4(a2, z, w);
+
+	0u8
+})
