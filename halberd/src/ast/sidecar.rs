@@ -240,7 +240,7 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
         // TODO maybe refactor this to not use a macro lol
         macro_rules! foo {
             ($child_node:expr) => {
-                #[allow(unused_assignments)]
+                #[allow(unused_assignments, reason = "macro laziness")]
                 {
                     let (n, c) =
                         $child_node.modify_some_sidecars_2(global, fns, SidecarWalkContexts {

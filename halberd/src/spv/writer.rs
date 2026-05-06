@@ -54,7 +54,7 @@ where T: SpvWritable
 {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> Result<()> {
         match self {
-            Some(v) => self.write_spv_to(writer),
+            Some(v) => v.write_spv_to(writer),
             None => Ok(()),
         }
     }

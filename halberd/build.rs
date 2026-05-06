@@ -24,7 +24,7 @@ fn main() -> eyre::Result<()> {
 
     let mut mods = Modules(codegen::Scope::new());
 
-    let allows = "allow(unused, non_camel_case_types, non_upper_case_globals, clippy::upper_case_acronyms, clippy::enum_variant_names, clippy::doc_markdown, clippy::wildcard_imports)";
+    let allows = r#"allow(unused, non_camel_case_types, non_upper_case_globals, clippy::upper_case_acronyms, clippy::enum_variant_names, clippy::doc_markdown, clippy::wildcard_imports, clippy::identity_op, reason="because i said so (various ignores for the generated code)")"#;
     let prelude = "use crate::{spv::{self, operand_kind as ok, writer::{ToWord, SpvWriter, SpvWritable}}, iil::{self, block}, types};";
     mods.iil().vis("pub").attr(allows);
     mods.iil_flat().vis("pub").scope().raw(prelude);

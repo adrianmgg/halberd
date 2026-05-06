@@ -5,20 +5,22 @@
 #![feature(iterator_try_collect)]
 #![feature(int_roundings)]
 // FIXME should probably turn this back on once we reach a 1.0
-#![allow(unused)]
+#![allow(unused, reason = "i'm being lazy for now")]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(
     clippy::too_many_lines,
     clippy::inline_always,
     clippy::unreadable_literal,
     clippy::wildcard_imports,
-    clippy::default_trait_access
+    clippy::default_trait_access,
+    reason = "i just dont really care about these"
 )]
 #![deny(
     clippy::ignored_unit_patterns,
     clippy::semicolon_if_nothing_returned,
     clippy::wildcard_enum_match_arm,
-    clippy::clone_on_copy
+    clippy::clone_on_copy,
+    clippy::allow_attributes_without_reason
 )]
 
 pub(crate) mod ast;

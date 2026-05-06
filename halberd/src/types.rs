@@ -120,12 +120,20 @@ pub enum Integer {
 }
 
 impl Integer {
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "don't want to lock ourselves into self necissarily being Copy"
+    )]
     pub fn bit_width(&self) -> u32 {
         match self {
             Integer::Unsigned(width) | Integer::Signed(width) => *width,
         }
     }
 
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "don't want to lock ourselves into self necissarily being Copy"
+    )]
     pub fn is_signed(&self) -> bool {
         match self {
             Integer::Unsigned(_) => false,
