@@ -25,6 +25,7 @@ pub enum Constant {
 #[derive(Debug)]
 pub enum BlockLocalExpr {
     Op(iil::flat::OpExpr),
+    OpUntyped(iil::flat::OpExprUntyped),
     Block(Box<Block>),
     Constant(Constant),
     Ref(block::BlockLocalRef),
@@ -35,6 +36,7 @@ impl Renumberable for BlockLocalExpr {
     fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) {
         match self {
             BlockLocalExpr::Op(op_expr) => op_expr.renumber(from, to),
+            BlockLocalExpr::OpUntyped(op) => op.renumber(from, to),
             BlockLocalExpr::Block(block) => block.renumber(from, to),
             BlockLocalExpr::Constant(constant) => {}
             BlockLocalExpr::Ref(r) => r.renumber(from, to),
@@ -45,6 +47,7 @@ impl Renumberable for BlockLocalExpr {
 #[derive(Debug)]
 pub enum FlatBlockLocalExpr {
     Op(iil::flat::OpExpr),
+    OpUntyped(iil::flat::OpExprUntyped),
     Constant(Constant),
     Ref(block::BlockLocalRef),
 }

@@ -60,10 +60,14 @@ pub(super) fn process_file(
     let all_types_needed = fns
         .locals_valued_only()
         .flat_map(|(_, func)| func.body.locals())
+        // FIXME wait there can also be required types coming from somewhere other than the return
+        //       type in some cases i think?
         .filter_map(|(_, op)| match op {
             block::BlockLocal::Void(op_void) => None,
             block::BlockLocal::Valued(expr) => match expr {
-                h::FlatBlockLocalExpr::Constant(_) | h::FlatBlockLocalExpr::Ref(_) => None,
+                h::FlatBlockLocalExpr::Constant(_)
+                | h::FlatBlockLocalExpr::Ref(_)
+                | h::FlatBlockLocalExpr::OpUntyped(_) => None,
                 h::FlatBlockLocalExpr::Op(op_expr) => Some(op_expr.ret_type()),
             },
         })
@@ -111,6 +115,11 @@ fn process_function(
                 }));
             }
 
+            // start body
+            blockbuilder.push_valued_local(h::BlockLocalExpr::OpUntyped(
+                f::OpExprUntyped::OpLabel(fops::OpLabel),
+            ));
+
             // add our body to the block
             let x = push_expr_to_block_mostly(function.data.body, universe, blockbuilder, blockctx);
             match x {
@@ -120,6 +129,9 @@ fn process_function(
                 }
                 block::BlockLocal::Valued(valued) => Some(valued),
             }
+
+            // (no OpFunctionEnd here b/c currently we wait until later when converting to spv to
+            //  emit that)
         }),
     }
 }
@@ -343,6 +355,8 @@ fn flatten_into(
             block::BlockLocal::Valued(valued) => {
                 let x = match valued {
                     h::BlockLocalExpr::Op(o) => Either::Left(h::FlatBlockLocalExpr::Op(o)),
+                    h::BlockLocalExpr::OpUntyped(o) =>
+                        Either::Left(h::FlatBlockLocalExpr::OpUntyped(o)),
                     h::BlockLocalExpr::Constant(c) =>
                         Either::Left(h::FlatBlockLocalExpr::Constant(c)),
                     h::BlockLocalExpr::Ref(r) => Either::Left(h::FlatBlockLocalExpr::Ref(r)),
@@ -365,6 +379,7 @@ fn flatten_into(
     }
     terminal.and_then(|e| match e {
         h::BlockLocalExpr::Op(o) => Some(h::FlatBlockLocalExpr::Op(o)),
+        h::BlockLocalExpr::OpUntyped(o) => Some(h::FlatBlockLocalExpr::OpUntyped(o)),
         h::BlockLocalExpr::Constant(c) => Some(h::FlatBlockLocalExpr::Constant(c)),
         h::BlockLocalExpr::Ref(r) => Some(h::FlatBlockLocalExpr::Ref(r)),
         h::BlockLocalExpr::Block(b) => flatten_into(*b, blockbuilder),
