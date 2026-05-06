@@ -58,9 +58,9 @@ pub(super) fn process_file(
         },
         identity,
     );
-
     dbg!(&fns);
 
+    eprintln!("================ type instructions ================");
     let all_types_needed = fns
         .locals_valued_only()
         .flat_map(|(_, func)| func.body.locals())
@@ -78,16 +78,18 @@ pub(super) fn process_file(
         // FIXME avoid cloning here
         .cloned()
         .collect();
-
-    eprintln!("================ type instructions ================");
     let (type_ops_block, type2local) = iil_phase_part2::types_to_asm(all_types_needed, blockctx);
     dbg!(&type_ops_block, &type2local);
 
+    eprintln!("================ constant instructions ================");
     let all_constants_needed: HashSet<_> = fns
         .locals_valued_only()
         .flat_map(|(_, func)| func.body.locals_valued_only())
         .filter_map(|(_, local)| matches_opt!(local, h::FlatBlockLocalExpr::Constant(c) => c))
         .collect();
+    let (constant_ops_block, constant2local) =
+        constants_to_asm(all_constants_needed.into_iter().cloned(), blockctx);
+    dbg!(&constant_ops_block, &constant2local);
 }
 
 fn process_function(
@@ -396,8 +398,8 @@ fn flatten_into(
     })
 }
 
-pub(crate) fn constants_to_asm(
-    constants_to_build: HashSet<h::Constant>,
+pub(crate) fn constants_to_asm<Constants: Iterator<Item = h::Constant>>(
+    constants_to_build: Constants,
     blockctx: &mut block::Ctx,
 ) -> (
     block::Block<(), f::OpExpr, ()>,
