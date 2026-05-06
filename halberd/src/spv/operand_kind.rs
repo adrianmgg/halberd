@@ -125,7 +125,9 @@ impl SpvWritable for LiteralContextDependentNumber {
 // - SPIR-V spec, 2.2.1. Instructions
 /// TODO
 #[derive(Debug)]
-pub struct LiteralString;
+pub struct LiteralString {
+    pub value: Box<str>,
+}
 
 impl SpvWritable for LiteralString {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }

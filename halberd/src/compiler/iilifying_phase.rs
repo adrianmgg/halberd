@@ -90,6 +90,103 @@ pub(super) fn process_file(
     let (constant_ops_block, constant2local) =
         constants_to_asm(all_constants_needed.into_iter().cloned(), blockctx);
     dbg!(&constant_ops_block, &constant2local);
+
+    // sew everything together. very hardcoded for now
+    let mut renumbers = HashMap::<block::BlockLocalRef, block::BlockLocalRef>::new();
+    let mut sewn_together = blockctx.new_block(|blockbuilder, blockctx| {
+        blockbuilder.push_void_local(f::OpVoid::OpCapability(fops::OpCapability {
+            op0: ok::Capability::Shader,
+        }));
+        blockbuilder.push_valued_local(f::OpAnyValued::Untyped(f::OpExprUntyped::OpExtInstImport(
+            fops::OpExtInstImport { op0: ok::LiteralString { value: "GLSL.std.450".into() } },
+        )));
+        blockbuilder.push_void_local(f::OpVoid::OpMemoryModel(fops::OpMemoryModel {
+            op0: ok::AddressingModel::Logical,
+            op1: ok::MemoryModel::GLSL450,
+        }));
+        // blockbuilder.push_void_local(
+        //     fops::OpEntryPoint {
+        //         op0: ok::ExecutionModel::Fragment,
+        //         op1: fns.locals_valued_only().find(|(_, f)| f),
+        //         op2: todo!(),
+        //         op3: todo!(),
+        //     }
+        //     .into(),
+        // );
+
+        let (type_ops, ()) = type_ops_block.into_parts();
+        for (r, t) in type_ops {
+            renumbers.insert(
+                r,
+                blockbuilder.push_valued_local(t.into_valued_always().into()),
+            );
+        }
+
+        let (constant_ops, ()) = constant_ops_block.into_parts();
+        for (r, t) in constant_ops {
+            renumbers.insert(
+                r,
+                blockbuilder.push_valued_local(t.into_valued_always().into()),
+            );
+        }
+
+        let (fns, ()) = fns.into_parts();
+        for (r, function) in fns {
+            let function = function.into_valued_always();
+            renumbers.insert(
+                r,
+                blockbuilder.push_valued_local(
+                    f::OpExpr::OpFunction(fops::OpFunction {
+                        ret_type: (*function.r#type.result).clone(),
+                        control: ok::FunctionControl::None,
+                        r#type: function.r#type.into(),
+                    })
+                    .into(),
+                ),
+            );
+
+            let (body, terminal) = function.body.into_parts();
+            for (r, o) in body {
+                match o {
+                    block::BlockLocal::Void(o) => blockbuilder.push_void_local(o),
+                    block::BlockLocal::Valued(o) => {
+                        renumbers.insert(r, match o {
+                            h::FlatBlockLocalExpr::Op(o) =>
+                                blockbuilder.push_valued_local(o.into()),
+                            h::FlatBlockLocalExpr::OpUntyped(o) =>
+                                blockbuilder.push_valued_local(o.into()),
+                            h::FlatBlockLocalExpr::Constant(constant) => *constant2local
+                                .get(&constant)
+                                .unwrap_or_else(|| panic!("no constant found for {constant:?}")),
+                            h::FlatBlockLocalExpr::Ref(block_local_ref) => block_local_ref,
+                        });
+                    }
+                }
+            }
+            match terminal {
+                None => blockbuilder.push_void_local(f::OpVoid::OpReturn(fops::OpReturn)),
+                Some(ret) => {
+                    let terminal_local = match ret {
+                        h::FlatBlockLocalExpr::Op(o) => blockbuilder.push_valued_local(o.into()),
+                        h::FlatBlockLocalExpr::OpUntyped(o) =>
+                            blockbuilder.push_valued_local(o.into()),
+                        h::FlatBlockLocalExpr::Constant(constant) =>
+                            *constant2local.get(&constant).unwrap(),
+                        h::FlatBlockLocalExpr::Ref(block_local_ref) => block_local_ref,
+                    };
+                    blockbuilder.push_void_local(f::OpVoid::OpReturnValue(fops::OpReturnValue {
+                        op0: terminal_local,
+                    }));
+                }
+            }
+
+            blockbuilder.push_void_local(f::OpVoid::OpFunctionEnd(fops::OpFunctionEnd));
+        }
+    });
+    for (from, to) in &renumbers {
+        sewn_together.renumber(*from, *to);
+    }
+    dbg!(&sewn_together);
 }
 
 fn process_function(
@@ -402,21 +499,24 @@ pub(crate) fn constants_to_asm<Constants: Iterator<Item = h::Constant>>(
     constants_to_build: Constants,
     blockctx: &mut block::Ctx,
 ) -> (
-    block::Block<(), f::OpExpr, ()>,
+    block::Block<Never, f::OpExpr, ()>,
     HashMap<h::Constant, block::BlockLocalRef>,
 ) {
     let mut constant2local = HashMap::new();
     let block = blockctx.new_block(|blockbuilder, blockctx| {
         for constant in constants_to_build {
-            blockbuilder.push_valued_local(match constant {
+            constant2local.insert(
+                constant.clone(),
+                blockbuilder.push_valued_local(match constant {
                     h::Constant::Int { r#type, value } => f::OpExpr::OpConstant(fops::OpConstant {
                         ret_type: r#type.into(),
                         op0: ok::LiteralInteger { value, r#type }.into(),
                     }),
-                    h::Constant::Float { r#type, value } => f::OpExpr::OpConstant(fops::OpConstant {
-                        ret_type: r#type.into(),
-                        op0: ok::LiteralFloat { value, r#type }.into()
-                    }),
+                    h::Constant::Float { r#type, value } =>
+                        f::OpExpr::OpConstant(fops::OpConstant {
+                            ret_type: r#type.into(),
+                            op0: ok::LiteralFloat { value, r#type }.into(),
+                        }),
                     h::Constant::Bool { value: true } =>
                         f::OpExpr::OpConstantTrue(fops::OpConstantTrue {
                             ret_type: types::Bool.into(),
@@ -425,7 +525,8 @@ pub(crate) fn constants_to_asm<Constants: Iterator<Item = h::Constant>>(
                         f::OpExpr::OpConstantFalse(fops::OpConstantFalse {
                             ret_type: types::Bool.into(),
                         }),
-                });
+                }),
+            );
         }
     });
     (block, constant2local)

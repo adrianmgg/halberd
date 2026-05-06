@@ -77,7 +77,7 @@ impl Modules {
 
 struct CodegennedInstructionInfo<'a> {
     name: String,
-    is_iil: bool,
+    is_manual_iil: bool,
     operands: CodegenOperands<'a>,
 }
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -162,7 +162,11 @@ fn codegen_instructions(
         for inst in relevant_instructions() {
             spv_enum
                 .new_variant(&inst.name)
-                .tuple(format!("instruction::{}", &inst.name));
+                .tuple(if inst.is_manual_iil {
+                    format!("crate::spv::instruction::{}", &inst.name)
+                } else {
+                    format!("instruction::{}", &inst.name)
+                });
         }
 
         let spv_enum_impl = mods.spv().new_impl(irk.spv_enum_name());
@@ -194,14 +198,16 @@ fn codegen_instructions(
         }
         for inst in relevant_instructions() {
             gen_from_impl(mods.spv(), irk.spv_enum_name(), "instruction", inst);
-            if inst.is_iil {
-                gen_from_impl(
-                    mods.iil_flat(),
-                    irk.flatiil_enum_name(),
-                    "instruction",
-                    inst,
-                );
-            }
+            gen_from_impl(
+                mods.iil_flat(),
+                irk.flatiil_enum_name(),
+                if inst.is_manual_iil {
+                    "crate::iil::flat::instruction"
+                } else {
+                    "instruction"
+                },
+                inst,
+            );
         }
 
         let f_op_enum = (mods.iil_flat())
@@ -210,11 +216,17 @@ fn codegen_instructions(
             .derive("Debug");
         instruction_infos
             .iter()
-            .filter(|ii| ii.is_iil && ii.operands.ret_kind == irk)
+            .filter(|ii| ii.operands.ret_kind == irk)
             .for_each(|ii| {
-                f_op_enum
-                    .new_variant(&ii.name)
-                    .tuple(format!("instruction::{}", ii.name));
+                f_op_enum.new_variant(&ii.name).tuple(format!(
+                    "{}::{}",
+                    if ii.is_manual_iil {
+                        "crate::iil::flat::instruction"
+                    } else {
+                        "instruction"
+                    },
+                    ii.name
+                ));
             });
 
         let f_op_enum_renumberable = (mods.iil_flat())
@@ -226,14 +238,12 @@ fn codegen_instructions(
             .arg("from", "block::BlockLocalRef")
             .arg("to", "block::BlockLocalRef");
         f_op_enum_renumber.line("match self {");
-        relevant_instructions()
-            .filter(|ii| ii.is_iil)
-            .for_each(|ii| {
-                f_op_enum_renumber.line(format!(
-                    "Self::{name}(o) => o.renumber(from, to),",
-                    name = ii.name
-                ));
-            });
+        relevant_instructions().for_each(|ii| {
+            f_op_enum_renumber.line(format!(
+                "Self::{name}(o) => o.renumber(from, to),",
+                name = ii.name
+            ));
+        });
         f_op_enum_renumber.line("}");
 
         let f_op_enum_impl = (mods.iil_flat())
@@ -256,15 +266,13 @@ fn codegen_instructions(
             InstructionRetKind::Void => "map_refs",
         };
         f_op_enum_impl_into.line("match self {");
-        relevant_instructions()
-            .filter(|ii| ii.is_iil)
-            .for_each(|ii| {
-                f_op_enum_impl_into.line(format!(
-                    "Self::{name}(x) => x.{intospvfn}({argstr}),",
-                    name = ii.name,
-                    intospvfn = irk.flatiil_op_trait_intospvmethodname(),
-                ));
-            });
+        relevant_instructions().for_each(|ii| {
+            f_op_enum_impl_into.line(format!(
+                "Self::{name}(x) => x.{intospvfn}({argstr}),",
+                name = ii.name,
+                intospvfn = irk.flatiil_op_trait_intospvmethodname(),
+            ));
+        });
         f_op_enum_impl_into.line("}");
 
         if matches!(irk, InstructionRetKind::RetTyped) {
@@ -273,12 +281,9 @@ fn codegen_instructions(
                 .arg_ref_self()
                 .ret("&types::Type");
             f_op_enum_impl_rt.line("match self {");
-            relevant_instructions()
-                .filter(|ii| ii.is_iil)
-                .for_each(|ii| {
-                    f_op_enum_impl_rt
-                        .line(format!("Self::{name}(x) => x.ret_type(),", name = ii.name));
-                });
+            relevant_instructions().for_each(|ii| {
+                f_op_enum_impl_rt.line(format!("Self::{name}(x) => x.ret_type(),", name = ii.name));
+            });
             f_op_enum_impl_rt.line("}");
         }
     }
@@ -405,10 +410,7 @@ fn codegen_instruction<'a>(
             .line("&self.ret_type");
     }
 
-    // we handle types and constants separately & insert them in the final f-iil -> il phase,
-    // so no need to output those instructions at all
-    let should_generate_iil =
-        !(matches!(instruction.opname.as_ref(), "OpFunction" | "OpFunctionEnd"));
+    let should_generate_iil = !matches!(instruction.opname.as_ref(), "OpFunction");
 
     if should_generate_iil {
         let fiil_struct = mods
@@ -527,7 +529,7 @@ fn codegen_instruction<'a>(
 
     CodegennedInstructionInfo {
         name: name.into(),
-        is_iil: should_generate_iil,
+        is_manual_iil: !should_generate_iil,
         operands: cg_operands,
     }
 }

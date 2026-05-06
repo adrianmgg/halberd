@@ -6,7 +6,7 @@ use std::{
 
 use unwrap_infallible::UnwrapInfallible as _;
 
-use crate::util::matches_opt;
+use crate::util::{Never, matches_opt};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(u64);
@@ -15,7 +15,7 @@ impl Display for BlockId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { Display::fmt(&self.0, f) }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockLocalRef {
     block: BlockId,
     local: usize,
@@ -205,6 +205,21 @@ pub enum BlockLocal<Void, Valued> {
     Valued(Valued),
 }
 
+impl<Valued> BlockLocal<Never, Valued> {
+    pub fn into_valued_always(self) -> Valued {
+        match self {
+            BlockLocal::Valued(valued) => valued,
+        }
+    }
+
+    pub fn valued_always(&self) -> &Valued {
+        match self {
+            BlockLocal::Valued(valued) => valued,
+            BlockLocal::Void(void) => match *void {},
+        }
+    }
+}
+
 impl<Void, Valued> BlockBuilder<Void, Valued> {
     pub fn push_void_local(&mut self, local: Void) { self.locals.push(BlockLocal::Void(local)); }
 
@@ -280,6 +295,10 @@ impl Renumberable for BlockLocalRef {
             *self = to;
         }
     }
+}
+
+impl Renumberable for () {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {}
 }
 
 /*
