@@ -284,7 +284,13 @@ fn process_function(
                 .data
                 .args
                 .iter()
-                .map(|arg| arg.r#type.inner.clone())
+                .map(|arg| {
+                    types::Pointer {
+                        storage_class: ok::StorageClass::Function,
+                        target: Box::new(arg.r#type.inner.clone()),
+                    }
+                    .into()
+                })
                 .collect(),
             result: Box::new(function.data.return_type.inner.clone()),
         },
