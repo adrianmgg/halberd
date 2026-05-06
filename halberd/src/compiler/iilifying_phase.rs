@@ -91,7 +91,25 @@ pub(super) fn process_file(
         constants_to_asm(all_constants_needed.into_iter().cloned(), blockctx);
     dbg!(&constant_ops_block, &constant2local);
 
-    // sew everything together. very hardcoded for now
+    eprintln!("================ sewn together ================");
+    let sewn_together = sew_everything_together(
+        blockctx,
+        fns,
+        type_ops_block,
+        constant_ops_block,
+        &constant2local,
+    );
+    dbg!(&sewn_together);
+}
+
+/// sew everything together. very hardcoded for now
+fn sew_everything_together(
+    blockctx: &mut block::Ctx,
+    fns: block::Block<Never, h::FlatFunction, ()>,
+    type_ops_block: block::Block<Never, f::OpExprUntyped, ()>,
+    constant_ops_block: block::Block<Never, f::OpExpr, ()>,
+    constant2local: &HashMap<h::Constant, block::BlockLocalRef>,
+) -> block::Block<f::OpVoid, f::OpAnyValued, ()> {
     let mut renumbers = HashMap::<block::BlockLocalRef, block::BlockLocalRef>::new();
     let mut sewn_together = blockctx.new_block(|blockbuilder, blockctx| {
         blockbuilder.push_void_local(f::OpVoid::OpCapability(fops::OpCapability {
@@ -192,7 +210,7 @@ pub(super) fn process_file(
             break;
         }
     }
-    dbg!(&sewn_together);
+    sewn_together
 }
 
 fn process_function(
