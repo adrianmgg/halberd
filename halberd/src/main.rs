@@ -38,8 +38,17 @@ use ariadne::{Label, Report, ReportKind};
 use chumsky::{Parser, input::Input};
 
 fn main() {
-    for line in std::io::stdin().lines() {
-        let line = line.unwrap();
+    let argv: Vec<_> = std::env::args().skip(1).collect();
+    let repl_lines: Box<dyn Iterator<Item = String>> = if argv.is_empty() {
+        Box::new(std::io::stdin().lines().map(|line| line.unwrap()))
+    } else {
+        Box::new(
+            argv.into_iter()
+                .map(|f| std::fs::read_to_string(f).unwrap()),
+        )
+    };
+
+    for line in repl_lines {
         let src = ariadne::Source::from(&line);
         // FIXME should eventually really be using `.into_output_errors` instead of `.into_result`
         let tokens = match dbg!(lexer::lexer().parse(&line).into_result()) {
