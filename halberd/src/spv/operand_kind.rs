@@ -148,13 +148,13 @@ impl SpvWritable for LiteralString {
         for chunk in bytes.chunks(4) {
             assert!(!wrote_unaligned_chunk);
             let word = if let [a, b, c, d] = chunk[..] {
-                u32::from_be_bytes([a, b, c, d])
+                u32::from_le_bytes([a, b, c, d])
             } else {
                 wrote_unaligned_chunk = true;
                 match chunk[..] {
-                    [a, b, c] => u32::from_be_bytes([a, b, c, 0]),
-                    [a, b] => u32::from_be_bytes([a, b, 0, 0]),
-                    [a] => u32::from_be_bytes([a, 0, 0, 0]),
+                    [a, b, c] => u32::from_le_bytes([a, b, c, 0]),
+                    [a, b] => u32::from_le_bytes([a, b, 0, 0]),
+                    [a] => u32::from_le_bytes([a, 0, 0, 0]),
                     _ => unreachable!(
                         "should only be able to get chunks of size 1, 2, or 3 here, but got a chunk of size {}",
                         chunk.len()
@@ -174,7 +174,7 @@ impl SpvWritable for LiteralString {
     fn tell_spv_wordcount(&self) -> u16 {
         let byte_len = self.value.len();
         let content_word_len = byte_len.div_floor(4) as u16;
-        if byte_len % 4 == 0 {
+        if byte_len == 0 || byte_len.is_multiple_of(4) {
             content_word_len + 1
         } else {
             content_word_len
