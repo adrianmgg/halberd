@@ -22,7 +22,10 @@ use crate::{
     },
     scope,
     spv::{self, operand_kind as ok, writer::SpvWriter},
-    types::{self, prelude::ExtAnyType},
+    types::{
+        self,
+        prelude::{ExtAnyType, ExtPointer},
+    },
     util::{Either, Never, matches_opt},
 };
 
@@ -471,8 +474,16 @@ fn push_expr_to_block_mostly(
             // FIXME need to do proper errors instead of panic here
             let scope = universe.get_scope(expr.sidecar.scope());
             let var_info = scope.lookup(&name).unwrap();
+            let var_type = var_info.r#type.and_is_pointer().and_to_target().unwrap();
             let block_ref = var_info.block_ref.unwrap();
-            block::BlockLocal::Valued(block_ref.into())
+            block::BlockLocal::Valued(
+                f::OpExpr::OpLoad(fops::OpLoad {
+                    ret_type: var_type.clone(),
+                    op0: block_ref,
+                    op1: None,
+                })
+                .into(),
+            )
         }
         ast::ExprData::FunctionCall(function_call) => {
             let ast::FunctionCall { target, args, span: _ } = function_call;
