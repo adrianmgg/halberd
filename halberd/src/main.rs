@@ -57,13 +57,13 @@ fn main() {
                 continue;
             }
         };
-        println!(
+        eprintln!(
             "================================================================================"
         );
         match compiler::compile(file) {
             Ok((file, universe)) => {
                 dbg!(&file, &universe);
-                println!(
+                eprintln!(
                     "================================================================================"
                 );
                 compiler::foobar(file, universe);

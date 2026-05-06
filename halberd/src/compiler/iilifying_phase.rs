@@ -6,7 +6,7 @@ use super::PhaseFullyTyped;
 use crate::{
     ast::{self, Sidecars},
     compiler::{
-        PhaseIILGeneration,
+        PhaseIILGeneration, iil_phase_part2,
         sidecars::{ExprSidecarS, ExprSidecarT},
     },
     iil::{
@@ -43,6 +43,7 @@ pub(super) fn process_file(
         |(_, function)| process_function(function, universe, blockctx),
         identity,
     );
+    dbg!(&fns);
 
     let fns = fns.map_mut(
         identity,
@@ -65,7 +66,14 @@ pub(super) fn process_file(
                 h::FlatBlockLocalExpr::Constant(_) | h::FlatBlockLocalExpr::Ref(_) => None,
                 h::FlatBlockLocalExpr::Op(op_expr) => Some(op_expr.ret_type()),
             },
-        });
+        })
+        // FIXME avoid cloning here
+        .cloned()
+        .collect();
+
+    eprintln!("================ type instructions ================");
+    let (type_ops_block, type2local) = iil_phase_part2::types_to_asm(all_types_needed, blockctx);
+    dbg!(&type_ops_block, &type2local);
 }
 
 fn process_function(
@@ -89,7 +97,11 @@ fn process_function(
             for arg in &function.data.args {
                 let r#ref = blockbuilder.push_valued_local(h::BlockLocalExpr::Op(
                     f::OpExpr::OpFunctionParameter(fops::OpFunctionParameter {
-                        ret_type: arg.r#type.inner.clone(),
+                        ret_type: types::Pointer {
+                            storage_class: ok::StorageClass::Function,
+                            target: Box::new(arg.r#type.inner.clone()),
+                        }
+                        .into(),
                     }),
                 ));
                 let mut scope = universe.get_scope_mut(function.sidecar);

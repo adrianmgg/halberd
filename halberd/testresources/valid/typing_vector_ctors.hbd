@@ -2,7 +2,7 @@ $. TODO return type of this should be void
 $fn foo(x: r32, y: r32, z: r32, w: r32): u8 = ({
 	$. constructing vectors from scalars
 	let a1: r32v1 = r32v1(x);
-	let a2: r32v2 = r32v3(x, y);
+	let a2: r32v2 = r32v2(x, y);
 	let a3: r32v3 = r32v3(x, y, z);
 	let a4: r32v4 = r32v4(x, y, z, w);
 

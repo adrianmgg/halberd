@@ -7,12 +7,13 @@ use crate::{
     types::{self, to_spv::TypeToSpv},
 };
 
-// FIXME no longer spvifying... move.
-
 pub(crate) fn types_to_asm(
     mut types_to_build: HashSet<types::Type>,
     blockctx: &mut block::Ctx,
-) -> block::Block<(), crate::iil::flat::OpExprUntyped, ()> {
+) -> (
+    block::Block<(), crate::iil::flat::OpExprUntyped, ()>,
+    HashMap<types::Type, block::BlockLocalRef>,
+) {
     // add all transitively required types to the set too
     loop {
         let new_types: HashSet<_> = types_to_build
@@ -27,7 +28,7 @@ pub(crate) fn types_to_asm(
     }
 
     let mut built_types = HashMap::<types::Type, block::BlockLocalRef>::new();
-    blockctx.new_block(|blockbuilder, blockctx| {
+    let block = blockctx.new_block(|blockbuilder, blockctx| {
         while !types_to_build.is_empty() {
             let candidate = types_to_build
                 .iter()
@@ -43,7 +44,9 @@ pub(crate) fn types_to_asm(
             assert!(types_to_build.remove(&candidate));
             built_types.insert(candidate, blockbuilder.push_valued_local(built));
         }
-    })
+    });
+
+    (block, built_types)
 }
 
 #[rstest]

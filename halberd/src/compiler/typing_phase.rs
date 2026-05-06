@@ -9,6 +9,7 @@ use crate::{
         sidecars::{ExprSidecarS as _, ExprSidecarT as _},
     },
     scope::{self, ScopeId},
+    spv::operand_kind as ok,
     types::{self, prelude::*},
 };
 
@@ -37,6 +38,7 @@ pub(crate) fn populate_types<'a>(
                _| {
             dbg!(&universe);
             let mut scope_bound = universe.get_scope_mut(*scope);
+            // FIXME wait hang on wait that doesn't quite sound right
             #[allow(
                 clippy::map_all_any_identity,
                 reason = "any() is short-circuiting, which we don't want here"
@@ -52,7 +54,13 @@ pub(crate) fn populate_types<'a>(
                         let found = scope_bound.lookup_and_modify(
                             &arg.name,
                             |item: &mut NamespaceItemPartiallyTyped| {
-                                item.r#type = Some(arg.r#type.inner.clone());
+                                item.r#type = Some(
+                                    types::Pointer {
+                                        storage_class: ok::StorageClass::Function,
+                                        target: Box::new(arg.r#type.inner.clone()),
+                                    }
+                                    .into(),
+                                );
                             },
                         );
                         assert!(found);
@@ -74,12 +82,18 @@ pub(crate) fn populate_types<'a>(
             if let ast::ExprData::Declaration { name, r#type, value } = data {
                 let name = &name.inner;
                 let r#type = &r#type.inner;
-                assert!(
-                    universe
-                        .get_scope_mut(scope)
-                        .lookup_and_modify(name, |i: &mut NamespaceItemPartiallyTyped| i.r#type =
-                            Some(r#type.clone()))
-                );
+                assert!(universe.get_scope_mut(scope).lookup_and_modify(
+                    name,
+                    |i: &mut NamespaceItemPartiallyTyped| {
+                        i.r#type = Some(
+                            types::Pointer {
+                                storage_class: ok::StorageClass::Function,
+                                target: Box::new(r#type.clone()),
+                            }
+                            .into(),
+                        );
+                    }
+                ));
             }
             match sidecar.type_mut() {
                 Some(_) => (false, ()),
@@ -178,7 +192,8 @@ fn infer_expr_type(
         ast::ExprData::Var(chumsky::span::Spanned { inner: name, .. }) => universe
             .get_scope(scope)
             .lookup(name)
-            .and_then(|i| i.r#type.clone()),
+            .and_then(|i| i.r#type.and_is_pointer().and_to_target().cloned()),
+        // TODO should this be merged with the other handling of `Declaration`s elsewhere in this file?
         ast::ExprData::Declaration { name: _, r#type: _, value: _ } => Some(types::Void.into()),
         ast::ExprData::Block(spanned) => match &spanned.inner.last {
             // blocks with no terminal expression get the type void

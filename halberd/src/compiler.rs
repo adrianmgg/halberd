@@ -116,7 +116,7 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    fn file_parses(#[files("testresources/valid/**/*.hbd")] path: PathBuf) {
+    fn file_compiles(#[files("testresources/valid/**/*.hbd")] path: PathBuf) {
         use chumsky::Parser as _;
 
         use crate::parser::tokens_to_parser_input;
@@ -131,6 +131,13 @@ mod tests {
             .parse(input)
             .into_result()
             .expect("input should parse successfully");
-        assert_matches!(super::compile(file), Ok(_));
+        if let Err(errs) = super::compile(file) {
+            let errsrc = ariadne::Source::from(&src);
+            for err in errs {
+                err.eprint(&errsrc)
+                    .expect("compilation failed, and printing the failure also failed");
+            }
+            panic!("compilation failed (see errors above)");
+        }
     }
 }

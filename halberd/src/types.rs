@@ -202,8 +202,8 @@ impl_debug_via_display!(Matrix);
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Pointer {
-    storage_class: operand_kind::StorageClass,
-    target: Box<Type>,
+    pub storage_class: operand_kind::StorageClass,
+    pub target: Box<Type>,
 }
 
 impl Display for Pointer {
@@ -271,10 +271,12 @@ pub mod prelude {
             and_is_vector -> &'a Vector = t => { matches_opt!(t, Type::Concrete(Concrete::Vector(v)) => v) }
             and_is_matrix -> &'a Matrix = t => { matches_opt!(t, Type::Concrete(Concrete::Matrix(m)) => m) }
             and_is_number -> &'a NumberKind = t => { matches_opt!(t, Type::Concrete(Concrete::Number(n)) => n) }
+            and_is_pointer -> &'a Pointer = t => { matches_opt!(t, Type::Pointer(p) => p) }
             (&'a Option<Type>) {
                 and_is_vector -> &'a Vector = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Vector(v))) => v) }
                 and_is_matrix -> &'a Matrix = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Matrix(m))) => m) }
                 and_is_number -> &'a NumberKind = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Number(n))) => n) }
+                and_is_pointer -> &'a Pointer = t => { matches_opt!(t.as_ref(), Some(Type::Pointer(p)) => p) }
             }
         };
         ExtVector(&'a Vector) {
@@ -290,6 +292,9 @@ pub mod prelude {
         ExtNumberKind(&'a NumberKind) {
             and_is_float -> &'a Float = n => { matches_opt!(n, NumberKind::Float(f) => f) }
             and_is_int -> &'a Integer = n => { matches_opt!(n, NumberKind::Integer(i) => i) }
+        };
+        ExtPointer(&'a Pointer) {
+            and_to_target -> &'a Type = p => { Some(&p.target) }
         };
     }
 }
