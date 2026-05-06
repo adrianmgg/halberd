@@ -15,7 +15,7 @@ pub trait FlattenableToBlock {
     fn flatten(self, ctx: &mut block::Ctx) -> crate::iil::h::Block;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Constant {
     Int { r#type: types::Integer, value: BigInt },
     Float { r#type: types::Float, value: BigRational },

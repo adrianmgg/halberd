@@ -1,4 +1,8 @@
-use std::{assert_matches, convert::identity};
+use std::{
+    assert_matches,
+    collections::{HashMap, HashSet},
+    convert::identity,
+};
 
 use chumsky::span::Spanned;
 
@@ -16,7 +20,7 @@ use crate::{
         h,
     },
     scope,
-    spv::operand_kind as ok,
+    spv::{self, operand_kind as ok},
     types::{self, prelude::ExtAnyType},
     util::{Either, Never, matches_opt},
 };
@@ -78,6 +82,12 @@ pub(super) fn process_file(
     eprintln!("================ type instructions ================");
     let (type_ops_block, type2local) = iil_phase_part2::types_to_asm(all_types_needed, blockctx);
     dbg!(&type_ops_block, &type2local);
+
+    let all_constants_needed: HashSet<_> = fns
+        .locals_valued_only()
+        .flat_map(|(_, func)| func.body.locals_valued_only())
+        .filter_map(|(_, local)| matches_opt!(local, h::FlatBlockLocalExpr::Constant(c) => c))
+        .collect();
 }
 
 fn process_function(
@@ -384,4 +394,37 @@ fn flatten_into(
         h::BlockLocalExpr::Ref(r) => Some(h::FlatBlockLocalExpr::Ref(r)),
         h::BlockLocalExpr::Block(b) => flatten_into(*b, blockbuilder),
     })
+}
+
+pub(crate) fn constants_to_asm(
+    constants_to_build: HashSet<h::Constant>,
+    blockctx: &mut block::Ctx,
+) -> (
+    block::Block<(), f::OpExpr, ()>,
+    HashMap<h::Constant, block::BlockLocalRef>,
+) {
+    let mut constant2local = HashMap::new();
+    let block = blockctx.new_block(|blockbuilder, blockctx| {
+        for constant in constants_to_build {
+            blockbuilder.push_valued_local(match constant {
+                    h::Constant::Int { r#type, value } => f::OpExpr::OpConstant(fops::OpConstant {
+                        ret_type: r#type.into(),
+                        op0: ok::LiteralInteger { value, r#type }.into(),
+                    }),
+                    h::Constant::Float { r#type, value } => f::OpExpr::OpConstant(fops::OpConstant {
+                        ret_type: r#type.into(),
+                        op0: ok::LiteralFloat { value, r#type }.into()
+                    }),
+                    h::Constant::Bool { value: true } =>
+                        f::OpExpr::OpConstantTrue(fops::OpConstantTrue {
+                            ret_type: types::Bool.into(),
+                        }),
+                    h::Constant::Bool { value: false } =>
+                        f::OpExpr::OpConstantFalse(fops::OpConstantFalse {
+                            ret_type: types::Bool.into(),
+                        }),
+                });
+        }
+    });
+    (block, constant2local)
 }

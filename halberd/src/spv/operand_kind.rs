@@ -15,8 +15,8 @@ use crate::{
 // FIXME these fields should probably be pub right
 #[derive(Debug)]
 pub struct LiteralInteger {
-    value: BigInt,
-    r#type: types::Integer,
+    pub value: BigInt,
+    pub r#type: types::Integer,
 }
 
 // NOTE could potentially write a generic one for all built in num types w/ num-traits,
@@ -91,10 +91,8 @@ impl SpvWritable for LiteralInteger {
 
 #[derive(Debug)]
 pub struct LiteralFloat {
-    value: BigRational,
-}
-impl From<BigRational> for LiteralFloat {
-    fn from(value: BigRational) -> Self { Self { value } }
+    pub value: BigRational,
+    pub r#type: types::Float,
 }
 
 impl SpvWritable for LiteralFloat {
@@ -107,10 +105,14 @@ pub enum LiteralContextDependentNumber {
     Float(LiteralFloat),
 }
 impl_conversion_enum_variant!(LiteralContextDependentNumber::{Integer(LiteralInteger), Float(LiteralFloat)});
-impl_conversion_2_hop!(BigRational => LiteralFloat => LiteralContextDependentNumber);
 
 impl SpvWritable for LiteralContextDependentNumber {
-    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> {
+        match self {
+            Self::Integer(i) => i.write_spv_to(writer),
+            Self::Float(f) => f.write_spv_to(writer),
+        }
+    }
 }
 
 // > A string is interpreted as a nul-terminated stream of characters.

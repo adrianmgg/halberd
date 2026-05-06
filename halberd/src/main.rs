@@ -16,7 +16,8 @@
 #![deny(
     clippy::ignored_unit_patterns,
     clippy::semicolon_if_nothing_returned,
-    clippy::wildcard_enum_match_arm
+    clippy::wildcard_enum_match_arm,
+    clippy::clone_on_copy
 )]
 
 pub(crate) mod ast;
