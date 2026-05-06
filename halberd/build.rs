@@ -33,6 +33,18 @@ fn main() -> eyre::Result<()> {
     mods.spv_operandkind().vis("pub").scope().raw(prelude);
     mods.spv_instruction().vis("pub").scope().raw(prelude);
 
+    mods.spv()
+        .scope()
+        .raw(format!("pub const MAGIC: u32 = {};", grammar.magic_number))
+        .raw(format!(
+            "pub const MAJOR_VERSION: u8 = {};",
+            grammar.major_version
+        ))
+        .raw(format!(
+            "pub const MINOR_VERSION: u8 = {};",
+            grammar.minor_version
+        ));
+
     // pull in the full namespace so we can define things manually there and have the
     // codegen'd structs still see them
     mods.spv_operandkind()
@@ -153,7 +165,11 @@ fn codegen_instructions(
         InstructionRetKind::RetUntyped,
         InstructionRetKind::RetTyped,
     ] {
-        let spv_enum = mods.spv().new_enum(irk.spv_enum_name()).vis("pub");
+        let spv_enum = mods
+            .spv()
+            .new_enum(irk.spv_enum_name())
+            .vis("pub")
+            .derive("Clone");
         let relevant_instructions = || {
             instruction_infos
                 .iter()
@@ -213,7 +229,7 @@ fn codegen_instructions(
         let f_op_enum = (mods.iil_flat())
             .new_enum(irk.flatiil_enum_name())
             .vis("pub")
-            .derive("Debug");
+            .derive("Debug,Clone");
         instruction_infos
             .iter()
             .filter(|ii| ii.operands.ret_kind == irk)
@@ -337,7 +353,10 @@ fn codegen_instruction<'a>(
 
     let r#mod = Modules::spv_instruction;
     let name = ensure_valid_ident(&instruction.opname);
-    let inst_struct = r#mod(mods).new_struct(&name).vis("pub").derive("Debug");
+    let inst_struct = r#mod(mods)
+        .new_struct(&name)
+        .vis("pub")
+        .derive("Debug,Clone");
     // FIXME extensions
     // FIXME version
     match cg_operands.ret_kind {
@@ -384,7 +403,7 @@ fn codegen_instruction<'a>(
     impl_instruction
         .new_fn("opcode")
         .arg_ref_self()
-        .ret("u32")
+        .ret("u16")
         .line(instruction.opcode);
 
     let impl_instruction_write = impl_instruction
@@ -418,7 +437,7 @@ fn codegen_instruction<'a>(
             .iil_f_instructions()
             .new_struct(&name)
             .vis("pub")
-            .derive("Debug");
+            .derive("Debug,Clone");
         match cg_operands.ret_kind {
             InstructionRetKind::Void => {}
             InstructionRetKind::RetUntyped => {}
@@ -663,7 +682,7 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
             let t = r#mod(mods)
                 .new_struct(ensure_valid_ident(&name))
                 .vis("pub")
-                .derive("Debug");
+                .derive("Debug,Clone");
             for base in bases {
                 t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
             }
@@ -741,10 +760,9 @@ mod spv_grammar {
         pub copyright: Vec<String>,
         #[serde(deserialize_with = "hex_literal")]
         pub magic_number: u32,
-        // TODO: figure out if there's a spec-defined int type we should be using for
-        //       major/minor/rev
-        pub major_version: u32,
-        pub minor_version: u32,
+        pub major_version: u8,
+        pub minor_version: u8,
+        // TODO: figure out if there's a spec-defined int type we should be using for revision
         pub revision: u32,
         pub instruction_printing_class: Vec<InstructionPrintingClass>,
         pub instructions: Vec<Instruction>,
@@ -759,7 +777,7 @@ mod spv_grammar {
     #[derive(Debug, Deserialize)]
     pub struct Instruction {
         pub opname: String,
-        pub opcode: u32,
+        pub opcode: u16,
         pub operands: Option<Vec<Operand>>,
         pub capabilities: Option<Vec<String>>,
         pub class: String,

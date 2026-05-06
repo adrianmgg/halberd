@@ -173,6 +173,12 @@ impl<VoidLocal, ValuedLocal, Terminal> Block<VoidLocal, ValuedLocal, Terminal> {
             terminal: map_terminal(self.terminal),
         }
     }
+
+    // TODO should this be a method of Block or of BlockLocalRef or neither?
+    // FIXME give this a better name
+    pub fn relative_to(&self, local: BlockLocalRef) -> Option<usize> {
+        (local.block == self.id()).then_some(local.local)
+    }
 }
 
 impl<VoidLocal, ValuedLocal, Terminal> Debug for Block<VoidLocal, ValuedLocal, Terminal>

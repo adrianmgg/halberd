@@ -25,7 +25,7 @@ pub(crate) trait ToWord {
 impl<T> SpvWriter for T
 where T: std::io::Write
 {
-    fn write_word(&mut self, word: u32) -> Result<()> { self.write_all(&word.to_le_bytes()) }
+    fn write_word(&mut self, word: u32) -> Result<()> { self.write_all(&word.to_be_bytes()) }
 }
 
 pub(crate) trait SpvWritable {

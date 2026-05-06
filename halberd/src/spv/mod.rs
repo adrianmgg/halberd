@@ -1,5 +1,15 @@
-pub use crate::generated::spv::{OpRetTyped, OpRetUntyped, OpVoid};
+pub use crate::generated::spv::{
+    MAGIC, MAJOR_VERSION, MINOR_VERSION, OpRetTyped, OpRetUntyped, OpVoid,
+};
 use crate::spv::writer::{SpvWritable, SpvWriter};
+
+/// magic number is ascii `amgg` XOR `halb` XOR `erdc` ("amgg halberdc")
+pub const GENERATOR_MAGIC: u32 = u32::from_be_bytes([
+    b'a' ^ b'h' ^ b'e',
+    b'm' ^ b'a' ^ b'r',
+    b'g' ^ b'l' ^ b'd',
+    b'g' ^ b'b' ^ b'c',
+]);
 
 pub trait HasCapabilities {
     fn capabilities(&self) -> enumset::EnumSet<operand_kind::Capability>;
@@ -20,7 +30,7 @@ pub trait InstructionRetTyped: Instruction {
 }
 
 impl OpVoid {
-    fn write_instruction(&self, writer: &mut dyn SpvWriter) -> writer::Result<()> {
+    pub fn write_instruction(&self, writer: &mut dyn SpvWriter) -> writer::Result<()> {
         let inst = self.as_dyn_instruction();
         // opcode
         writer.write_word(inst.opcode())?;
@@ -30,7 +40,7 @@ impl OpVoid {
 }
 
 impl OpRetUntyped {
-    fn write_instruction(
+    pub fn write_instruction(
         &self,
         writer: &mut dyn SpvWriter,
         result_id: operand_kind::IdResult,
@@ -46,7 +56,7 @@ impl OpRetUntyped {
 }
 
 impl OpRetTyped {
-    fn write_instruction(
+    pub fn write_instruction(
         &self,
         writer: &mut dyn SpvWriter,
         result_id: operand_kind::IdResult,

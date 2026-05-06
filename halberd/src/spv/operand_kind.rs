@@ -13,7 +13,7 @@ use crate::{
 };
 
 // FIXME these fields should probably be pub right
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralInteger {
     pub value: BigInt,
     pub r#type: types::Integer,
@@ -89,7 +89,7 @@ impl SpvWritable for LiteralInteger {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralFloat {
     pub value: BigRational,
     pub r#type: types::Float,
@@ -99,7 +99,7 @@ impl SpvWritable for LiteralFloat {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LiteralContextDependentNumber {
     Integer(LiteralInteger),
     Float(LiteralFloat),
@@ -115,26 +115,54 @@ impl SpvWritable for LiteralContextDependentNumber {
     }
 }
 
-// > A string is interpreted as a nul-terminated stream of characters.
-// > All string comparisons are case sensitive.
-// > The character set is Unicode in the UTF-8 encoding scheme.
-// > The UTF-8 octets (8-bit bytes) are packed four per word,
-// >  following the little-endian convention (i.e., the first octet is in the lowest-order 8 bits of the word).
-// > The final word contains the string’s nul-termination character (0),
-// >  and all contents past the end of the string in the final word are padded with 0.
-// - SPIR-V spec, 2.2.1. Instructions
-/// TODO
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralString {
     pub value: Box<str>,
 }
 
 impl SpvWritable for LiteralString {
-    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> {
+        // > A string is interpreted as a nul-terminated stream of characters.
+        // > All string comparisons are case sensitive.
+        // > The character set is Unicode in the UTF-8 encoding scheme.
+        // > The UTF-8 octets (8-bit bytes) are packed four per word,
+        // >  following the little-endian convention (i.e., the first octet is in the lowest-order 8 bits of the word).
+        // > The final word contains the string’s nul-termination character (0),
+        // >  and all contents past the end of the string in the final word are padded with 0.
+        // - SPIR-V spec, 2.2.1. Instructions
+
+        let mut wrote_any_chunk = false;
+        let mut wrote_unaligned_chunk = false;
+        let bytes = self.value.as_bytes();
+        for chunk in bytes.chunks(4) {
+            assert!(!wrote_unaligned_chunk);
+            let word = if let [a, b, c, d] = chunk[..] {
+                u32::from_be_bytes([a, b, c, d])
+            } else {
+                wrote_unaligned_chunk = true;
+                match chunk[..] {
+                    [a, b, c] => u32::from_be_bytes([a, b, c, 0]),
+                    [a, b] => u32::from_be_bytes([a, b, 0, 0]),
+                    [a] => u32::from_be_bytes([a, 0, 0, 0]),
+                    _ => unreachable!(
+                        "should only be able to get chunks of size 1, 2, or 3 here, but got a chunk of size {}",
+                        chunk.len()
+                    ),
+                }
+            };
+            writer.write_word(word)?;
+            wrote_any_chunk = true;
+        }
+        if !wrote_any_chunk || !wrote_unaligned_chunk {
+            writer.write_word(0)?;
+        }
+
+        Ok(())
+    }
 }
 
 /// TODO
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralExtInstInteger;
 
 impl SpvWritable for LiteralExtInstInteger {
@@ -142,7 +170,7 @@ impl SpvWritable for LiteralExtInstInteger {
 }
 
 /// TODO
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralSpecConstantOpInteger;
 
 impl SpvWritable for LiteralSpecConstantOpInteger {

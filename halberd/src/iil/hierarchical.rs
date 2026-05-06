@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
@@ -5,10 +7,11 @@ use crate::{
     iil::{
         self,
         block::{self, Renumberable},
+        flat::IilOpExpr as _,
     },
     spv::operand_kind,
     types,
-    util::impl_conversion_enum_variant,
+    util::{impl_conversion_enum_variant, matches_opt},
 };
 
 pub trait FlattenableToBlock {
@@ -70,4 +73,41 @@ pub struct FlatFunction {
     pub control: enumset::EnumSet<operand_kind::FunctionControl>,
     pub r#type: types::Function,
     pub body: FlatBlock,
+}
+
+impl FlatFunction {
+    pub(crate) fn types_referenced(&self) -> impl Iterator<Item = Cow<'_, types::Type>> {
+        use std::iter::{chain, once};
+        let body_locals = self.body.locals().filter_map(|(_, op)| match op {
+            block::BlockLocal::Void(op_void) => None,
+            block::BlockLocal::Valued(expr) => match expr {
+                FlatBlockLocalExpr::Constant(_)
+                | FlatBlockLocalExpr::Ref(_)
+                | FlatBlockLocalExpr::OpUntyped(_) => None,
+                FlatBlockLocalExpr::Op(op_expr) => Some(Cow::Borrowed(op_expr.ret_type())),
+            },
+        });
+        let body_terminal = self.body.terminal().as_ref().and_then(|a| match a {
+            FlatBlockLocalExpr::Constant(_)
+            | FlatBlockLocalExpr::Ref(_)
+            | FlatBlockLocalExpr::OpUntyped(_) => None,
+            FlatBlockLocalExpr::Op(op_expr) => Some(Cow::Borrowed(op_expr.ret_type())),
+        });
+        let overall = Cow::Owned(self.r#type.clone().into());
+        chain(chain(body_locals, once(overall)), body_terminal)
+    }
+
+    pub(crate) fn constants_referenced(&self) -> impl Iterator<Item = &Constant> {
+        use std::iter::{chain, once};
+        let body_constants = self
+            .body
+            .locals_valued_only()
+            .filter_map(|(_, local)| matches_opt!(local, FlatBlockLocalExpr::Constant(c) => c));
+        let terminal_constant_maybe = self
+            .body
+            .terminal()
+            .as_ref()
+            .and_then(|terminal| matches_opt!(terminal, FlatBlockLocalExpr::Constant(c) => c));
+        chain(body_constants, terminal_constant_maybe)
+    }
 }

@@ -33,7 +33,7 @@ pub trait IilOpExprUntyped {
     ) -> spv::OpRetUntyped;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OpAnyValued {
     Typed(OpExpr),
     Untyped(OpExprUntyped),
@@ -53,7 +53,7 @@ pub mod instruction {
     pub use crate::generated::iil::flat::instruction::*;
     use crate::{generated::spv, iil::block, spv::operand_kind as ok, types};
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct OpFunction {
         pub ret_type: types::Type,
         pub control: enumset::EnumSet<ok::FunctionControl>,

@@ -1,5 +1,6 @@
 use std::{
     assert_matches,
+    borrow::Cow,
     collections::{HashMap, HashSet},
     convert::identity,
 };
@@ -16,11 +17,11 @@ use crate::{
     iil::{
         block::{self, Renumberable},
         f::{self, instruction as fops},
-        flat::IilOpExpr,
+        flat::{IilOpExpr, IilOpExprUntyped, IilOpVoid},
         h,
     },
     scope,
-    spv::{self, operand_kind as ok},
+    spv::{self, operand_kind as ok, writer::SpvWriter},
     types::{self, prelude::ExtAnyType},
     util::{Either, Never, matches_opt},
 };
@@ -63,29 +64,19 @@ pub(super) fn process_file(
     eprintln!("================ type instructions ================");
     let all_types_needed = fns
         .locals_valued_only()
-        .flat_map(|(_, func)| func.body.locals())
-        // FIXME wait there can also be required types coming from somewhere other than the return
-        //       type in some cases i think?
-        .filter_map(|(_, op)| match op {
-            block::BlockLocal::Void(op_void) => None,
-            block::BlockLocal::Valued(expr) => match expr {
-                h::FlatBlockLocalExpr::Constant(_)
-                | h::FlatBlockLocalExpr::Ref(_)
-                | h::FlatBlockLocalExpr::OpUntyped(_) => None,
-                h::FlatBlockLocalExpr::Op(op_expr) => Some(op_expr.ret_type()),
-            },
-        })
-        // FIXME avoid cloning here
-        .cloned()
+        .flat_map(|(_, func)| func.types_referenced())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(Cow::into_owned)
         .collect();
-    let (type_ops_block, type2local) = iil_phase_part2::types_to_asm(all_types_needed, blockctx);
+    let (type_ops_block, mut type2local) =
+        iil_phase_part2::types_to_asm(all_types_needed, blockctx);
     dbg!(&type_ops_block, &type2local);
 
     eprintln!("================ constant instructions ================");
     let all_constants_needed: HashSet<_> = fns
         .locals_valued_only()
-        .flat_map(|(_, func)| func.body.locals_valued_only())
-        .filter_map(|(_, local)| matches_opt!(local, h::FlatBlockLocalExpr::Constant(c) => c))
+        .flat_map(|(_, func)| func.constants_referenced())
         .collect();
     let (constant_ops_block, constant2local) =
         constants_to_asm(all_constants_needed.into_iter().cloned(), blockctx);
@@ -98,8 +89,69 @@ pub(super) fn process_file(
         type_ops_block,
         constant_ops_block,
         &constant2local,
+        &mut type2local,
     );
     dbg!(&sewn_together);
+
+    // we can now directly map refs local to the sewn-together block into globally-qualified refs
+    let map_local = |local: block::BlockLocalRef| -> u32 {
+        sewn_together
+            .relative_to(local)
+            .unwrap()
+            .try_into()
+            .unwrap()
+    };
+    let map_refs = |local: block::BlockLocalRef| -> ok::IdRef { ok::IdRef(map_local(local)) };
+    let map_types = |ty: types::Type| -> ok::IdResultType {
+        ok::IdResultType(map_local(
+            *type2local
+                .get(&ty)
+                .unwrap_or_else(|| panic!("no entry found for type {ty:?}")),
+        ))
+    };
+    let mut writer = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open("a.spv")
+        .unwrap();
+    let write_success = try {
+        // magic number
+        writer.write_word(spv::MAGIC)?;
+        // version number
+        writer.write_word(u32::from_be_bytes([
+            0,
+            spv::MAJOR_VERSION,
+            spv::MINOR_VERSION,
+            0,
+        ]))?;
+        // generator's magic number
+        writer.write_word(spv::GENERATOR_MAGIC)?;
+        // (reserved)
+        writer.write_word(0)?;
+        // ... instruction stream ...
+        let max_id = sewn_together
+            .locals_valued_only()
+            .map(|(r, _)| map_local(r))
+            .max()
+            .unwrap_or_default();
+        // bound
+        writer.write_word(max_id + 1)?;
+        for (r, op) in sewn_together.locals() {
+            let result_id = ok::IdResult(map_local(r));
+            // FIXME avoid unnecissary cloning in these
+            match op.clone() {
+                block::BlockLocal::Void(op) =>
+                    op.into_spv_void(map_refs).write_instruction(&mut writer)?,
+                block::BlockLocal::Valued(f::OpAnyValued::Typed(op)) => op
+                    .into_spv_expr(map_refs, map_types)
+                    .write_instruction(&mut writer, result_id)?,
+                block::BlockLocal::Valued(f::OpAnyValued::Untyped(op)) => op
+                    .into_spv_retuntyped(map_refs)
+                    .write_instruction(&mut writer, result_id)?,
+            }
+        }
+    };
 }
 
 /// sew everything together. very hardcoded for now
@@ -109,6 +161,7 @@ fn sew_everything_together(
     type_ops_block: block::Block<Never, f::OpExprUntyped, ()>,
     constant_ops_block: block::Block<Never, f::OpExpr, ()>,
     constant2local: &HashMap<h::Constant, block::BlockLocalRef>,
+    type2local: &mut HashMap<types::Type, block::BlockLocalRef>,
 ) -> block::Block<f::OpVoid, f::OpAnyValued, ()> {
     let mut renumbers = HashMap::<block::BlockLocalRef, block::BlockLocalRef>::new();
     let mut sewn_together = blockctx.new_block(|blockbuilder, blockctx| {
@@ -188,8 +241,9 @@ fn sew_everything_together(
                         h::FlatBlockLocalExpr::Op(o) => blockbuilder.push_valued_local(o.into()),
                         h::FlatBlockLocalExpr::OpUntyped(o) =>
                             blockbuilder.push_valued_local(o.into()),
-                        h::FlatBlockLocalExpr::Constant(constant) =>
-                            *constant2local.get(&constant).unwrap(),
+                        h::FlatBlockLocalExpr::Constant(constant) => *constant2local
+                            .get(&constant)
+                            .unwrap_or_else(|| panic!("no constant found for {constant:?}")),
                         h::FlatBlockLocalExpr::Ref(block_local_ref) => block_local_ref,
                     };
                     blockbuilder.push_void_local(f::OpVoid::OpReturnValue(fops::OpReturnValue {
@@ -204,7 +258,12 @@ fn sew_everything_together(
     loop {
         let mut renumbered_any = false;
         for (from, to) in &renumbers {
+            // renumber in the newly created sewn-together block
             renumbered_any |= sewn_together.renumber(*from, *to);
+            // renumber in the existing type->local mapping
+            for typelocal in type2local.values_mut() {
+                renumbered_any |= typelocal.renumber(*from, *to);
+            }
         }
         if !renumbered_any {
             break;
