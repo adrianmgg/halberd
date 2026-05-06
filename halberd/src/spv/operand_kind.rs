@@ -87,6 +87,8 @@ impl SpvWritable for LiteralInteger {
 
         Ok(())
     }
+
+    fn tell_spv_wordcount(&self) -> u16 { self.r#type.bit_width().div_ceil(32) as u16 }
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +99,8 @@ pub struct LiteralFloat {
 
 impl SpvWritable for LiteralFloat {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+
+    fn tell_spv_wordcount(&self) -> u16 { todo!() }
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +115,13 @@ impl SpvWritable for LiteralContextDependentNumber {
         match self {
             Self::Integer(i) => i.write_spv_to(writer),
             Self::Float(f) => f.write_spv_to(writer),
+        }
+    }
+
+    fn tell_spv_wordcount(&self) -> u16 {
+        match self {
+            Self::Integer(i) => i.tell_spv_wordcount(),
+            Self::Float(f) => f.tell_spv_wordcount(),
         }
     }
 }
@@ -159,6 +170,16 @@ impl SpvWritable for LiteralString {
 
         Ok(())
     }
+
+    fn tell_spv_wordcount(&self) -> u16 {
+        let byte_len = self.value.len();
+        let content_word_len = byte_len.div_floor(4) as u16;
+        if byte_len % 4 == 0 {
+            content_word_len + 1
+        } else {
+            content_word_len
+        }
+    }
 }
 
 /// TODO
@@ -167,6 +188,8 @@ pub struct LiteralExtInstInteger;
 
 impl SpvWritable for LiteralExtInstInteger {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+
+    fn tell_spv_wordcount(&self) -> u16 { todo!() }
 }
 
 /// TODO
@@ -175,4 +198,6 @@ pub struct LiteralSpecConstantOpInteger;
 
 impl SpvWritable for LiteralSpecConstantOpInteger {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+
+    fn tell_spv_wordcount(&self) -> u16 { todo!() }
 }

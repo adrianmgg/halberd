@@ -30,10 +30,13 @@ where T: std::io::Write
 
 pub(crate) trait SpvWritable {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> Result<()>;
+    fn tell_spv_wordcount(&self) -> u16;
 }
 
 impl SpvWritable for u32 {
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> Result<()> { writer.write_word(*self) }
+
+    fn tell_spv_wordcount(&self) -> u16 { 1 }
 }
 
 impl<T> SpvWritable for T
@@ -42,6 +45,8 @@ where T: ToWord
     fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> Result<()> {
         writer.write_word(self.to_word())
     }
+
+    fn tell_spv_wordcount(&self) -> u16 { 1 }
 }
 
 impl<T> SpvWritable for Option<T>
@@ -51,6 +56,14 @@ where T: SpvWritable
         match self {
             Some(v) => self.write_spv_to(writer),
             None => Ok(()),
+        }
+    }
+
+    // FIXME hmmmmmmmmmmmmm...
+    fn tell_spv_wordcount(&self) -> u16 {
+        match self {
+            Some(v) => v.tell_spv_wordcount(),
+            None => 0,
         }
     }
 }
@@ -64,4 +77,6 @@ where T: SpvWritable
         }
         Ok(())
     }
+
+    fn tell_spv_wordcount(&self) -> u16 { self.iter().map(SpvWritable::tell_spv_wordcount).sum() }
 }

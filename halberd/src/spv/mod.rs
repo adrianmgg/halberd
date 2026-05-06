@@ -19,10 +19,12 @@ pub mod operand_kind;
 pub(crate) mod writer;
 
 pub trait Instruction: HasCapabilities {
-    fn opcode(&self) -> u32;
+    fn opcode(&self) -> u16;
     /// essentially a [`writer::SpvWritable::write_spv_to`] implementation, but only writes the non-
     /// -result-related operands (ie. neither its opcode nor its result type id or result id if any)
     fn write_operands_to(&self, writer: &mut dyn SpvWriter) -> writer::Result<()>;
+    /// word-length of operands
+    fn tell_operands(&self) -> u16;
 }
 
 pub trait InstructionRetTyped: Instruction {
@@ -32,8 +34,9 @@ pub trait InstructionRetTyped: Instruction {
 impl OpVoid {
     pub fn write_instruction(&self, writer: &mut dyn SpvWriter) -> writer::Result<()> {
         let inst = self.as_dyn_instruction();
+        let word_count = inst.tell_operands() + 1;
         // opcode
-        writer.write_word(inst.opcode())?;
+        writer.write_word((u32::from(word_count) << u16::BITS) | u32::from(inst.opcode()))?;
         // ...operands
         inst.write_operands_to(writer)
     }
@@ -46,8 +49,9 @@ impl OpRetUntyped {
         result_id: operand_kind::IdResult,
     ) -> writer::Result<()> {
         let inst = self.as_dyn_instruction();
+        let word_count = inst.tell_operands() + 2;
         // opcode
-        writer.write_word(inst.opcode())?;
+        writer.write_word((u32::from(word_count) << u16::BITS) | u32::from(inst.opcode()))?;
         // Result <id>
         result_id.write_spv_to(writer)?;
         // ...operands
@@ -62,8 +66,9 @@ impl OpRetTyped {
         result_id: operand_kind::IdResult,
     ) -> writer::Result<()> {
         let inst = self.as_dyn_instruction();
+        let word_count = inst.tell_operands() + 3;
         // opcode
-        writer.write_word(inst.opcode())?;
+        writer.write_word((u32::from(word_count) << u16::BITS) | u32::from(inst.opcode()))?;
         // <id> Result Type
         inst.ret_type().write_spv_to(writer)?;
         // Result <id>

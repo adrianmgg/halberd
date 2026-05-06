@@ -416,6 +416,15 @@ fn codegen_instruction<'a>(
     }
     impl_instruction_write.line("Ok(())");
 
+    let impl_instruction_tell = impl_instruction
+        .new_fn("tell_operands")
+        .arg_ref_self()
+        .ret("u16")
+        .line("0");
+    for operand in &cg_operands.other_operands {
+        impl_instruction_tell.line(format!("+ self.{}.tell_spv_wordcount()", operand.name));
+    }
+
     // RetTyped instructions specifically also need to impl the InstructionRetTyped trait
     if matches!(cg_operands.ret_kind, InstructionRetKind::RetTyped) {
         // InstructionRetTyped
@@ -687,18 +696,26 @@ fn codegen_operand_kind(mods: &mut Modules, operand_kind: &spv_grammar::OperandK
                 t.tuple_field(format!("pub {}", ensure_valid_ident(base)));
             }
 
-            let write_spv_impl = r#mod(mods)
-                .new_impl(&name)
-                .impl_trait("SpvWritable")
+            let impl_writable = r#mod(mods).new_impl(&name).impl_trait("SpvWritable");
+
+            let write_spv_impl = impl_writable
                 .new_fn("write_spv_to")
                 .arg_ref_self()
                 .arg("writer", "&mut dyn SpvWriter")
                 .ret("spv::writer::Result<()>");
-
             for n in 0..(bases.len()) {
                 write_spv_impl.line(format!("self.{n}.write_spv_to(writer)?;"));
             }
             write_spv_impl.line("Ok(())");
+
+            let impl_writable_tell = impl_writable
+                .new_fn("tell_spv_wordcount")
+                .arg_ref_self()
+                .ret("u16")
+                .line("0");
+            for n in 0..(bases.len()) {
+                impl_writable_tell.line(format!("+ self.{n}.tell_spv_wordcount()"));
+            }
         }
     }
 }
