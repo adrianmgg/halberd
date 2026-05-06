@@ -11,6 +11,7 @@ use crate::{
     scope::{self, ScopeId},
     spv::operand_kind as ok,
     types::{self, prelude::*},
+    util::matches_opt,
 };
 
 pub(crate) fn populate_types<'a>(
@@ -42,6 +43,30 @@ pub(crate) fn populate_types<'a>(
                     }
                     .into(),
                 ),
+            }
+            .into(),
+        );
+    });
+    universe.root_scope_mut().lookup_and_modify("uv", |a| {
+        a.r#type = Some(
+            types::Pointer {
+                storage_class: ok::StorageClass::Input,
+                target: Box::new(
+                    types::Vector {
+                        component_type: types::Float { width: 32 }.into(),
+                        component_count: 2,
+                    }
+                    .into(),
+                ),
+            }
+            .into(),
+        );
+    });
+    universe.root_scope_mut().lookup_and_modify("time", |a| {
+        a.r#type = Some(
+            types::Pointer {
+                storage_class: ok::StorageClass::Input,
+                target: Box::new(types::Float { width: 32 }.into()),
             }
             .into(),
         );
@@ -167,9 +192,25 @@ fn infer_expr_type(
             let lhs_and_rhs = try { (lhs_type.as_ref()?, rhs_type.as_ref()?) };
             match op.inner {
                 ast::InfixOp::Add | ast::InfixOp::Subtract | ast::InfixOp::Multiply => lhs_and_rhs
-                    .and_then(|(lhs, rhs)| (lhs == rhs).then_some(lhs))
+                    .and_is_homogeneous()
+                    .and_then(|ty| ty.and_is_vector_or_scalar_of().is_some().then_some(ty))
                     .cloned(),
-                ast::InfixOp::Divide => todo!(),
+                // FIXME need int div too
+                ast::InfixOp::Divide => lhs_and_rhs.and_is_homogeneous().and_then(|ty| {
+                    ty.and_is_number()
+                        .and_is_float()
+                        .map(Into::into)
+                        .or_else(|| {
+                            ty.and_is_vector().and_then(|v| {
+                                v.component_type
+                                    .and_is_float()
+                                    .is_some()
+                                    .then_some(v)
+                                    .cloned()
+                                    .map(Into::into)
+                            })
+                        })
+                }),
                 // OpDot
                 ast::InfixOp::DotProduct => lhs_and_rhs
                     .and_is_homogeneous()
@@ -237,8 +278,25 @@ fn infer_function_call_type(
         .map(|expr| expr.sidecar.r#type().as_ref())
         .try_collect()?;
     match &data.target {
-        ast::ExprOrType::Expr(expr) => None,
-        ast::ExprOrType::Type(chumsky::span::Spanned { inner: target, span }) => {
+        ast::IdentOrType::Ident(chumsky::span::Spanned { inner: name, span: _ }) => match name
+            .as_ref()
+        {
+            "fract" | "exp" | "cos" | "sin" | "fabs" => matches_opt!(arg_types[..], [arg0] => arg0)
+                .and_then(|ty| ty.and_is_vector_or_scalar_of().is_some().then_some(ty))
+                .cloned(),
+            "length" => matches_opt!(arg_types[..], [arg0] => arg0)
+                .and_is_vector()
+                .and_to_component_type()
+                .and_is_float()
+                .copied()
+                .map(Into::into),
+            "pow" => matches_opt!(arg_types[..], [a, b] => (a, b))
+                .and_is_homogeneous()
+                .and_then(|ty| ty.and_is_vector_or_scalar_of().is_some().then_some(ty))
+                .cloned(),
+            _ => None,
+        },
+        ast::IdentOrType::Type(chumsky::span::Spanned { inner: target, span }) => {
             if let Some(vec) = target.and_is_vector() {
                 // > OpCompositeConstruct
                 // > ... Result Type must be a composite type, whose top-level members/elements/components/columns have the same type as the types of the operands

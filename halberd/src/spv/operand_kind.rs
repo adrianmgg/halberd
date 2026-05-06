@@ -213,14 +213,19 @@ impl SpvWritable for LiteralString {
     }
 }
 
-/// TODO
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct LiteralExtInstInteger;
+pub struct LiteralExtInstInteger(pub u32);
+
+impl From<u32> for LiteralExtInstInteger {
+    fn from(value: u32) -> Self { Self(value) }
+}
 
 impl SpvWritable for LiteralExtInstInteger {
-    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> { todo!() }
+    fn write_spv_to(&self, writer: &mut dyn SpvWriter) -> spv::writer::Result<()> {
+        writer.write_word(self.0)
+    }
 
-    fn tell_spv_wordcount(&self) -> u16 { todo!() }
+    fn tell_spv_wordcount(&self) -> u16 { 1 }
 }
 
 /// TODO

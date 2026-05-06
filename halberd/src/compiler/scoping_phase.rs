@@ -28,6 +28,8 @@ pub(super) fn populate_scopes<'a>(
 
     // FIXME more temp hardcoded stuff. remove me eventually
     universe.root_scope_mut().insert("f_color", ());
+    universe.root_scope_mut().insert("uv", ());
+    universe.root_scope_mut().insert("time", ());
 
     let root_scope = universe.root_scope_id();
     e.iteratively_modify_sidecars_2(&mut universe, root_scope, &SidecarFns {

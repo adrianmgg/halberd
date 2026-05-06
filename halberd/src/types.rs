@@ -280,11 +280,27 @@ pub mod prelude {
             and_is_matrix -> &'a Matrix = t => { matches_opt!(t, Type::Concrete(Concrete::Matrix(m)) => m) }
             and_is_number -> &'a NumberKind = t => { matches_opt!(t, Type::Concrete(Concrete::Number(n)) => n) }
             and_is_pointer -> &'a Pointer = t => { matches_opt!(t, Type::Pointer(p) => p) }
+            and_is_vector_or_scalar_of -> &'a NumberKind = t => {
+                #[allow(clippy::wildcard_enum_match_arm, reason = "it's ok here")]
+                match t {
+                    Type::Concrete(Concrete::Vector(v)) => Some(&v.component_type),
+                    Type::Concrete(Concrete::Number(n)) => Some(n),
+                    _ => None,
+                }
+            }
             (&'a Option<Type>) {
                 and_is_vector -> &'a Vector = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Vector(v))) => v) }
                 and_is_matrix -> &'a Matrix = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Matrix(m))) => m) }
                 and_is_number -> &'a NumberKind = t => { matches_opt!(t.as_ref(), Some(Type::Concrete(Concrete::Number(n))) => n) }
                 and_is_pointer -> &'a Pointer = t => { matches_opt!(t.as_ref(), Some(Type::Pointer(p)) => p) }
+                and_is_vector_or_scalar_of -> &'a NumberKind = t => {
+                    #[allow(clippy::wildcard_enum_match_arm, reason = "it's ok here")]
+                    match t {
+                        Some(Type::Concrete(Concrete::Vector(v))) => Some(&v.component_type),
+                        Some(Type::Concrete(Concrete::Number(n))) => Some(n),
+                        _ => None,
+                    }
+                }
             }
         };
         ExtVector(&'a Vector) {

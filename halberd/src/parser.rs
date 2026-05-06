@@ -7,7 +7,7 @@ use crate::{
     ast::{self, Expr, ExprData},
     lexer::{self, Keyword, Symbol, Token},
     types,
-    util::SpannedExt as _,
+    util::{SpannedExt as _, matches_opt},
 };
 
 // higher = earlier
@@ -194,7 +194,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
             r#type().then(fn_call_args.clone()).spanned().map(
                 |Spanned { span, inner: (target, args) }| {
                     Expr::from(ExprData::FunctionCall(ast::FunctionCall {
-                        target: ast::ExprOrType::Type(target),
+                        target: ast::IdentOrType::Type(target),
                         args,
                         span,
                     }))
@@ -294,8 +294,11 @@ pub fn expr_parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, 'src, Expr<
                 Precedence::FunctionCall as _,
                 fn_call_args,
                 |target: Expr<'_>, args, extra| -> Expr<'_> {
+                    // FIXME last minute jank
+                    let name = matches_opt!(target, Expr { data: ExprData::Var(name), .. } => name)
+                        .unwrap();
                     Expr::from(ExprData::FunctionCall(ast::FunctionCall {
-                        target: ast::ExprOrType::Expr(Box::new(target)),
+                        target: ast::IdentOrType::Ident(name),
                         args,
                         span: extra.span(),
                     }))

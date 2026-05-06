@@ -48,6 +48,8 @@ pub(super) fn process_file(
 
     // FIXME temp. hardcoded stuff, remove this all eventually
     let mut frag_color = None;
+    let mut uv = None;
+    let mut time = None;
     let frag_color_type: types::Type = types::Pointer {
         storage_class: ok::StorageClass::Output,
         target: Box::new(
@@ -59,6 +61,22 @@ pub(super) fn process_file(
         ),
     }
     .into();
+    let uv_type: types::Type = types::Pointer {
+        storage_class: ok::StorageClass::Input,
+        target: Box::new(
+            types::Vector {
+                component_type: types::Float { width: 32 }.into(),
+                component_count: 2,
+            }
+            .into(),
+        ),
+    }
+    .into();
+    let time_type: types::Type = types::Pointer {
+        storage_class: ok::StorageClass::Input,
+        target: Box::new(types::Float { width: 32 }.into()),
+    }
+    .into();
     let mut main_inputs_block: block::Block<Never, f::OpExpr, ()> =
         blockctx.new_block(|blockbuilder, blockctx| {
             frag_color = Some(blockbuilder.push_valued_local(f::OpExpr::OpVariable(
@@ -68,15 +86,47 @@ pub(super) fn process_file(
                     op1: None,
                 },
             )));
+            uv = Some(
+                blockbuilder.push_valued_local(f::OpExpr::OpVariable(fops::OpVariable {
+                    ret_type: uv_type.clone(),
+                    op0: ok::StorageClass::Input,
+                    op1: None,
+                })),
+            );
+            time = Some(
+                blockbuilder.push_valued_local(f::OpExpr::OpVariable(fops::OpVariable {
+                    ret_type: time_type.clone(),
+                    op0: ok::StorageClass::Input,
+                    op1: None,
+                })),
+            );
         });
     let frag_color = frag_color.unwrap();
+    let uv = uv.unwrap();
+    let time = time.unwrap();
     universe
         .root_scope_mut()
         .lookup_and_modify("f_color", |a| a.block_ref = Some(frag_color));
+    universe
+        .root_scope_mut()
+        .lookup_and_modify("uv", |a| a.block_ref = Some(uv));
+    universe
+        .root_scope_mut()
+        .lookup_and_modify("time", |a| a.block_ref = Some(time));
+
+    let mut ext_glsl = None;
+    let exts_block: block::Block<Never, _, ()> = blockctx.new_block(|blockbuilder, blockctx| {
+        ext_glsl = Some(blockbuilder.push_valued_local(f::OpAnyValued::Untyped(
+            f::OpExprUntyped::OpExtInstImport(fops::OpExtInstImport {
+                op0: ok::LiteralString { value: "GLSL.std.450".into() },
+            }),
+        )));
+    });
+    let ext_glsl = ext_glsl.unwrap();
 
     let fns = forward_fns.map_mut(
         identity,
-        |(_, function)| process_function(function, universe, blockctx),
+        |(_, function)| process_function(function, universe, blockctx, ext_glsl),
         identity,
     );
     dbg!(&fns);
@@ -102,6 +152,8 @@ pub(super) fn process_file(
         .map(Cow::into_owned)
         .collect();
     all_types_needed.insert(frag_color_type);
+    all_types_needed.insert(uv_type);
+    all_types_needed.insert(time_type);
     let (type_ops_block, mut type2local) =
         iil_phase_part2::types_to_asm(all_types_needed, blockctx);
     dbg!(&type_ops_block, &type2local);
@@ -124,6 +176,7 @@ pub(super) fn process_file(
         &constant2local,
         &mut type2local,
         main_inputs_block,
+        exts_block,
         frag_color,
     );
     dbg!(&sewn_together);
@@ -199,6 +252,7 @@ fn sew_everything_together(
     constant2local: &HashMap<h::Constant, block::BlockLocalRef>,
     type2local: &mut HashMap<types::Type, block::BlockLocalRef>,
     main_inputs_block: block::Block<Never, f::OpExpr, ()>,
+    exts_block: block::Block<Never, f::OpAnyValued, ()>,
     frag_color: block::BlockLocalRef,
 ) -> block::Block<f::OpVoid, f::OpAnyValued, ()> {
     let mut renumbers = HashMap::<block::BlockLocalRef, block::BlockLocalRef>::new();
@@ -206,9 +260,15 @@ fn sew_everything_together(
         blockbuilder.push_void_local(f::OpVoid::OpCapability(fops::OpCapability {
             op0: ok::Capability::Shader,
         }));
-        blockbuilder.push_valued_local(f::OpAnyValued::Untyped(f::OpExprUntyped::OpExtInstImport(
-            fops::OpExtInstImport { op0: ok::LiteralString { value: "GLSL.std.450".into() } },
-        )));
+
+        let (ext_ops, ()) = exts_block.into_parts();
+        for (r, ext_op) in ext_ops {
+            renumbers.insert(
+                r,
+                blockbuilder.push_valued_local(ext_op.into_valued_always()),
+            );
+        }
+
         blockbuilder.push_void_local(f::OpVoid::OpMemoryModel(fops::OpMemoryModel {
             op0: ok::AddressingModel::Logical,
             op1: ok::MemoryModel::GLSL450,
@@ -334,6 +394,7 @@ fn process_function(
     function: ast::Function<'_, PhaseIILGeneration>,
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockctx: &mut block::Ctx,
+    ext_glsl: block::BlockLocalRef,
 ) -> h::Function {
     h::Function {
         control: ok::FunctionControl::None,
@@ -377,7 +438,13 @@ fn process_function(
             ));
 
             // add our body to the block
-            let x = push_expr_to_block_mostly(function.data.body, universe, blockbuilder, blockctx);
+            let x = push_expr_to_block_mostly(
+                function.data.body,
+                universe,
+                blockbuilder,
+                blockctx,
+                ext_glsl,
+            );
             match x {
                 block::BlockLocal::Void(void) => {
                     blockbuilder.push_void_local(void);
@@ -405,6 +472,7 @@ fn push_expr_to_block_mostly(
     universe: &mut scope::Universe<<PhaseIILGeneration as Sidecars>::ScopeItem>,
     blockbuilder: &mut block::BlockBuilder<h::BlockLocalVoid, h::BlockLocalExpr>,
     blockctx: &mut block::Ctx,
+    ext_glsl: block::BlockLocalRef,
 ) -> block::BlockLocal<h::BlockLocalVoid, h::BlockLocalExpr> {
     match expr.data {
         ast::ExprData::LiteralInt(Spanned { inner: ast::LiteralInt { r#type, value }, .. }) =>
@@ -417,17 +485,19 @@ fn push_expr_to_block_mostly(
         ast::ExprData::InfixOp(lhs, op, rhs) => {
             let r#type = expr.sidecar.r#type();
             let lhs_blk = {
-                let local = push_expr_to_block_mostly(*lhs, universe, blockbuilder, blockctx);
+                let local =
+                    push_expr_to_block_mostly(*lhs, universe, blockbuilder, blockctx, ext_glsl);
                 let local = matches_opt!(local, block::BlockLocal::Valued(v) => v).unwrap();
                 blockbuilder.push_valued_local(local)
             };
             let rhs_blk = {
-                let local = push_expr_to_block_mostly(*rhs, universe, blockbuilder, blockctx);
+                let local =
+                    push_expr_to_block_mostly(*rhs, universe, blockbuilder, blockctx, ext_glsl);
                 let local = matches_opt!(local, block::BlockLocal::Valued(v) => v).unwrap();
                 blockbuilder.push_valued_local(local)
             };
             let x = match op.inner {
-                ast::InfixOp::Add => match r#type.and_is_number().unwrap() {
+                ast::InfixOp::Add => match r#type.and_is_vector_or_scalar_of().unwrap() {
                     types::NumberKind::Integer(_) => f::OpExpr::OpIAdd(fops::OpIAdd {
                         ret_type: r#type.clone(),
                         op0: lhs_blk,
@@ -441,7 +511,7 @@ fn push_expr_to_block_mostly(
                     })
                     .into(),
                 },
-                ast::InfixOp::Subtract => match r#type.and_is_number().unwrap() {
+                ast::InfixOp::Subtract => match r#type.and_is_vector_or_scalar_of().unwrap() {
                     types::NumberKind::Integer(_) => f::OpExpr::OpISub(fops::OpISub {
                         ret_type: r#type.clone(),
                         op0: lhs_blk,
@@ -455,7 +525,7 @@ fn push_expr_to_block_mostly(
                     })
                     .into(),
                 },
-                ast::InfixOp::Multiply => match r#type.and_is_number().unwrap() {
+                ast::InfixOp::Multiply => match r#type.and_is_vector_or_scalar_of().unwrap() {
                     types::NumberKind::Integer(_) => f::OpExpr::OpIMul(fops::OpIMul {
                         ret_type: r#type.clone(),
                         op0: lhs_blk,
@@ -469,7 +539,15 @@ fn push_expr_to_block_mostly(
                     })
                     .into(),
                 },
-                ast::InfixOp::Divide => todo!("IL for division"),
+                ast::InfixOp::Divide => match r#type.and_is_vector_or_scalar_of().unwrap() {
+                    types::NumberKind::Integer(_) => todo!("IL for integer division"),
+                    types::NumberKind::Float(_) => f::OpExpr::OpFDiv(fops::OpFDiv {
+                        ret_type: r#type.clone(),
+                        op0: lhs_blk,
+                        op1: rhs_blk,
+                    })
+                    .into(),
+                },
                 ast::InfixOp::DotProduct => todo!("IL for dot product"),
                 ast::InfixOp::CrossProduct => todo!("IL for cross product"),
                 ast::InfixOp::MatrixMultiply => todo!("IL for matrix multiplication"),
@@ -479,10 +557,10 @@ fn push_expr_to_block_mostly(
         ast::ExprData::Block(Spanned { inner: ast_block, .. }) => {
             let x: h::Block = blockctx.new_block(|b, ctx| {
                 for ast_expr in ast_block.exprs {
-                    push_expr_to_block_mostly(ast_expr, universe, b, ctx);
+                    push_expr_to_block_mostly(ast_expr, universe, b, ctx, ext_glsl);
                 }
                 ast_block.last.and_then(|terminal| {
-                    match push_expr_to_block_mostly(*terminal, universe, b, ctx) {
+                    match push_expr_to_block_mostly(*terminal, universe, b, ctx, ext_glsl) {
                         block::BlockLocal::Void(void) => {
                             blockbuilder.push_void_local(void);
                             None
@@ -511,7 +589,8 @@ fn push_expr_to_block_mostly(
             }));
 
             // add our initial value
-            let value_br = push_expr_to_block_mostly(*value, universe, blockbuilder, blockctx);
+            let value_br =
+                push_expr_to_block_mostly(*value, universe, blockbuilder, blockctx, ext_glsl);
             // FIXME don't unwrap
             let value_br = matches_opt!(value_br, block::BlockLocal::Valued(v) => v).unwrap();
             let value_br = blockbuilder.push_valued_local(value_br);
@@ -531,7 +610,9 @@ fn push_expr_to_block_mostly(
             let scope = universe.get_scope(expr.sidecar.scope());
             let var_info = scope.lookup(&name).unwrap();
             let var_type = var_info.r#type.and_is_pointer().and_to_target().unwrap();
-            let block_ref = var_info.block_ref.unwrap();
+            let block_ref = var_info
+                .block_ref
+                .unwrap_or_else(|| panic!("failed getting var {name}"));
             block::BlockLocal::Valued(
                 f::OpExpr::OpLoad(fops::OpLoad {
                     ret_type: var_type.clone(),
@@ -543,16 +624,41 @@ fn push_expr_to_block_mostly(
         }
         ast::ExprData::FunctionCall(function_call) => {
             let ast::FunctionCall { target, args, span: _ } = function_call;
+            let args_pushed = args.into_iter().map(|arg| {
+                let arg =
+                    push_expr_to_block_mostly(arg, universe, blockbuilder, blockctx, ext_glsl);
+                let arg = matches_opt!(arg, block::BlockLocal::Valued(v) => v).unwrap();
+                blockbuilder.push_valued_local(arg)
+            });
             match target {
-                ast::ExprOrType::Expr(expr) => todo!(),
-                ast::ExprOrType::Type(target) =>
+                ast::IdentOrType::Ident(Spanned { inner: name, span: _ }) => {
+                    let ext_inst = match name.as_ref() {
+                        // see https://registry.khronos.org/SPIR-V/specs/unified1/GLSL.std.450.html
+                        "fabs" => Some((ext_glsl, 4.into())),
+                        "fract" => Some((ext_glsl, 10.into())),
+                        "exp" => Some((ext_glsl, 27.into())),
+                        "cos" => Some((ext_glsl, 14.into())),
+                        "sin" => Some((ext_glsl, 13.into())),
+                        "length" => Some((ext_glsl, 66.into())),
+                        "pow" => Some((ext_glsl, 26.into())),
+                        _ => None,
+                    };
+                    if let Some(ext_inst) = ext_inst {
+                        block::BlockLocal::Valued(
+                            f::OpExpr::OpExtInst(fops::OpExtInst {
+                                ret_type: expr.sidecar.r#type().clone(),
+                                op0: ext_inst.0,
+                                op1: ext_inst.1,
+                                op2: args_pushed.collect(),
+                            })
+                            .into(),
+                        )
+                    } else {
+                        todo!("implement IL generation for {name}")
+                    }
+                }
+                ast::IdentOrType::Type(target) =>
                     if let Some(vec) = target.and_is_vector() {
-                        let args_pushed = args.into_iter().map(|arg| {
-                            let arg =
-                                push_expr_to_block_mostly(arg, universe, blockbuilder, blockctx);
-                            let arg = matches_opt!(arg, block::BlockLocal::Valued(v) => v).unwrap();
-                            blockbuilder.push_valued_local(arg)
-                        });
                         block::BlockLocal::Valued(
                             f::OpExpr::OpCompositeConstruct(fops::OpCompositeConstruct {
                                 ret_type: expr.sidecar.r#type().clone(),
@@ -573,8 +679,13 @@ fn push_expr_to_block_mostly(
                 if let Some(component_idx) = component_idx {
                     // FIXME using this same pattern up in InfixOp too. maybe factor out?
                     let target_local = {
-                        let local =
-                            push_expr_to_block_mostly(*target, universe, blockbuilder, blockctx);
+                        let local = push_expr_to_block_mostly(
+                            *target,
+                            universe,
+                            blockbuilder,
+                            blockctx,
+                            ext_glsl,
+                        );
                         let local = matches_opt!(local, block::BlockLocal::Valued(v) => v).unwrap();
                         blockbuilder.push_valued_local(local)
                     };
@@ -604,7 +715,8 @@ fn push_expr_to_block_mostly(
                 .block_ref
                 .unwrap();
 
-            let value_br = push_expr_to_block_mostly(*value, universe, blockbuilder, blockctx);
+            let value_br =
+                push_expr_to_block_mostly(*value, universe, blockbuilder, blockctx, ext_glsl);
             // FIXME don't unwrap
             let value_br = matches_opt!(value_br, block::BlockLocal::Valued(v) => v).unwrap();
             let value_br = blockbuilder.push_valued_local(value_br);

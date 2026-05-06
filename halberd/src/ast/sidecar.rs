@@ -2,7 +2,7 @@ use std::assert_matches;
 
 use chumsky::span::Spanned;
 
-use super::ExprOrType;
+use super::IdentOrType;
 use crate::ast::{Block, Expr, ExprData, FieldAccess, File, Function, FunctionCall, FunctionData};
 
 pub(crate) trait Sidecars {
@@ -152,8 +152,8 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                 ExprData::FunctionCall(FunctionCall { target, args, span }) =>
                     ExprData::FunctionCall(FunctionCall {
                         target: match target {
-                            ExprOrType::Expr(e) => ExprOrType::Expr(Box::new(e.map_sidecars(fns))),
-                            ExprOrType::Type(t) => ExprOrType::Type(t),
+                            IdentOrType::Ident(e) => IdentOrType::Ident(e),
+                            IdentOrType::Type(t) => IdentOrType::Type(t),
                         },
                         args: args.into_iter().map(|e| e.map_sidecars(fns)).collect(),
                         span,
@@ -202,14 +202,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     last_expr.validate_sidecars_into(fns, errors);
                 }
             }
-            ExprData::FunctionCall(FunctionCall { target, args, span: _ }) => {
-                if let ExprOrType::Expr(e) = target {
-                    e.validate_sidecars_into(fns, errors);
-                }
+            ExprData::FunctionCall(FunctionCall { target, args, span: _ }) =>
                 for arg in args {
                     arg.validate_sidecars_into(fns, errors);
-                }
-            }
+                },
             ExprData::FieldAccess(FieldAccess { target, field: _, span: _ }) =>
                 target.validate_sidecars_into(fns, errors),
             ExprData::Assignment { target, value, span } =>
@@ -278,14 +274,10 @@ impl<'a, S: Sidecars> Sidecarred<'a, S> for Expr<'a, S> {
                     foo!(expr);
                 }
             }
-            ExprData::FunctionCall(FunctionCall { target, args, span }) => {
-                if let ExprOrType::Expr(e) = target {
-                    foo!(e);
-                }
+            ExprData::FunctionCall(FunctionCall { target, args, span }) =>
                 for expr in args {
                     foo!(expr);
-                }
-            }
+                },
             ExprData::FieldAccess(FieldAccess { target, .. }) => {
                 foo!(target);
             }
