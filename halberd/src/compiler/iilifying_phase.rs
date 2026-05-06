@@ -178,6 +178,8 @@ pub(super) fn process_file(
         main_inputs_block,
         exts_block,
         frag_color,
+        uv,
+        time,
     );
     dbg!(&sewn_together);
 
@@ -254,6 +256,8 @@ fn sew_everything_together(
     main_inputs_block: block::Block<Never, f::OpExpr, ()>,
     exts_block: block::Block<Never, f::OpAnyValued, ()>,
     frag_color: block::BlockLocalRef,
+    uv: block::BlockLocalRef,
+    time: block::BlockLocalRef,
 ) -> block::Block<f::OpVoid, f::OpAnyValued, ()> {
     let mut renumbers = HashMap::<block::BlockLocalRef, block::BlockLocalRef>::new();
     let mut sewn_together = blockctx.new_block(|blockbuilder, blockctx| {
@@ -285,12 +289,24 @@ fn sew_everything_together(
                     op0: ok::ExecutionModel::Fragment,
                     op1: main_fn,
                     op2: ok::LiteralString { value: "main".into() },
-                    op3: vec![frag_color],
+                    op3: vec![frag_color, time, uv],
                 }
                 .into(),
             );
+            blockbuilder.push_void_local(
+                fops::OpExecutionMode { op0: main_fn, op1: ok::ExecutionMode::OriginUpperLeft }
+                    .into(),
+            );
             blockbuilder.push_void_local(f::OpVoid::OpDecorate(fops::OpDecorate {
                 op0: frag_color,
+                op1: ok::Decoration::Location(0u32.into()),
+            }));
+            blockbuilder.push_void_local(f::OpVoid::OpDecorate(fops::OpDecorate {
+                op0: time,
+                op1: ok::Decoration::Location(1u32.into()),
+            }));
+            blockbuilder.push_void_local(f::OpVoid::OpDecorate(fops::OpDecorate {
+                op0: uv,
                 op1: ok::Decoration::Location(0u32.into()),
             }));
         }
@@ -721,11 +737,13 @@ fn push_expr_to_block_mostly(
             let value_br = matches_opt!(value_br, block::BlockLocal::Valued(v) => v).unwrap();
             let value_br = blockbuilder.push_valued_local(value_br);
 
-            block::BlockLocal::Void(f::OpVoid::OpStore(fops::OpStore {
+            blockbuilder.push_void_local(f::OpVoid::OpStore(fops::OpStore {
                 op0: var_br,
                 op1: value_br,
                 op2: None,
-            }))
+            }));
+            // FIXME
+            block::BlockLocal::Void(f::OpVoid::OpNop(fops::OpNop))
         }
     }
 }

@@ -1,0 +1,4 @@
+$fn foo(a: r32v3, b: r32): r32v4 = ({
+	let tmp: r32 = a.x + b;
+	r32v4(a, tmp)
+})

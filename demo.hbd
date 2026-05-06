@@ -1,29 +1,32 @@
-$. port of https://www.shadertoy.com/view/mtyGWy
 $fn main(): void = ({
-	let finalColor: r32v3 = r32v3(0r32, 0r32, 0r32);
-	let uv2: r32v2 = uv;
+	$. f_color = r32v4(time * 0.1r32, uv, 1r32);
+	f_color = r32v4(time * 0.2r32, uv, 1r32);
 
-	$. iteration 1
-	let i: r32 = 0r32;
-	uv2 = fract(uv2 * r32v2(1.5r32, 1.5r32)) - r32v2(0.5r32, 0.5r32);
-	let n1: r32 = 0r32 - 1r32;  $. TODO <-
-	let d: r32 = length(uv2) * exp(n1 * length(uv));
-	let t: r32 = length(uv) + i * 0.4r32 + time * 0.4r32;
-	let col: r32v3 = { $. FIXME don't leak vars out of block
-		let a: r32v3 = r32v3(0.5r32, 0.5r32, 0.5r32);
-		let b: r32v3 = r32v3(0.5r32, 0.5r32, 0.5r32);
-		let c: r32v3 = r32v3(1.0r32, 1.0r32, 1.0r32);
-		let d2: r32v3 = r32v3(0.263r32, 0.416r32, 0.557r32);
-		$. TODO can't inline this for some reason
-		let aa: r32v3 = c * r32v3(t, t, t) + d2;
-		let foo: r32 = 6.28318r32;
-		a + b * cos(r32v3(foo, foo, foo) * aa)
-	};
-	d = sin(d * 8r32 + time) / 8r32;
-	d = fabs(d);
-	d = pow(0.01r32 / d, 1.2r32);
-	finalColor = finalColor + col * r32v3(d, d, d);
-
-	$. done
-	f_color = r32v4(finalColor, 1r32);
+$. port of https://www.shadertoy.com/view/mtyGWy
+$.	let finalColor: r32v3 = r32v3(0r32, 0r32, 0r32);
+$.	let uv2: r32v2 = uv;
+$.
+$.	$. iteration 1
+$.	let i: r32 = 0r32;
+$.	uv2 = fract(uv2 * r32v2(1.5r32, 1.5r32)) - r32v2(0.5r32, 0.5r32);
+$.	let n1: r32 = 0r32 - 1r32;  $. TODO <-
+$.	let d: r32 = length(uv2) * exp(n1 * length(uv));
+$.	let t: r32 = length(uv) + i * 0.4r32 + time * 0.4r32;
+$.	let col: r32v3 = { $. FIXME don't leak vars out of block
+$.		let a: r32v3 = r32v3(0.5r32, 0.5r32, 0.5r32);
+$.		let b: r32v3 = r32v3(0.5r32, 0.5r32, 0.5r32);
+$.		let c: r32v3 = r32v3(1.0r32, 1.0r32, 1.0r32);
+$.		let d2: r32v3 = r32v3(0.263r32, 0.416r32, 0.557r32);
+$.		$. TODO can't inline this for some reason
+$.		let aa: r32v3 = c * r32v3(t, t, t) + d2;
+$.		let foo: r32 = 6.28318r32;
+$.		a + b * cos(r32v3(foo, foo, foo) * aa)
+$.	};
+$.	d = sin(d * 8r32 + time) / 8r32;
+$.	d = fabs(d);
+$.	d = pow(0.01r32 / d, 1.2r32);
+$.	finalColor = finalColor + col * r32v3(d, d, d);
+$.
+$.	$. done
+$.	f_color = r32v4(finalColor, 1r32);
 })
