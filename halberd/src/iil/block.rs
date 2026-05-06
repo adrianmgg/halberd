@@ -231,7 +231,7 @@ impl<Void, Valued> BlockBuilder<Void, Valued> {
 }
 
 pub trait Renumberable {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef);
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool;
 }
 
 impl<Void, Valued> Renumberable for BlockLocal<Void, Valued>
@@ -239,7 +239,7 @@ where
     Void: Renumberable,
     Valued: Renumberable,
 {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool {
         match self {
             BlockLocal::Void(void) => void.renumber(from, to),
             BlockLocal::Valued(valued) => valued.renumber(from, to),
@@ -253,52 +253,60 @@ where
     Valued: Renumberable,
     Terminal: Renumberable,
 {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool {
+        let mut renumbered_any = false;
         for local in &mut self.locals {
-            local.renumber(from, to);
+            renumbered_any |= local.renumber(from, to);
         }
-        self.terminal.renumber(from, to);
+        renumbered_any |= self.terminal.renumber(from, to);
+        renumbered_any
     }
 }
 
 impl<T> Renumberable for Vec<T>
 where T: Renumberable
 {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
-        self.as_mut_slice().renumber(from, to);
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool {
+        self.as_mut_slice().renumber(from, to)
     }
 }
 
 impl<T> Renumberable for [T]
 where T: Renumberable
 {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool {
+        let mut renumbered_any = false;
         for x in self.iter_mut() {
-            x.renumber(from, to);
+            renumbered_any |= x.renumber(from, to);
         }
+        renumbered_any
     }
 }
 
 impl<T> Renumberable for Option<T>
 where T: Renumberable
 {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
-        for x in self.iter_mut() {
-            x.renumber(from, to);
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool {
+        match self {
+            Some(x) => x.renumber(from, to),
+            None => false,
         }
     }
 }
 
 impl Renumberable for BlockLocalRef {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool {
         if *self == from {
             *self = to;
+            true
+        } else {
+            false
         }
     }
 }
 
 impl Renumberable for () {
-    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) {}
+    fn renumber(&mut self, from: BlockLocalRef, to: BlockLocalRef) -> bool { false }
 }
 
 /*

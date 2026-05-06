@@ -183,8 +183,14 @@ pub(super) fn process_file(
             blockbuilder.push_void_local(f::OpVoid::OpFunctionEnd(fops::OpFunctionEnd));
         }
     });
-    for (from, to) in &renumbers {
-        sewn_together.renumber(*from, *to);
+    loop {
+        let mut renumbered_any = false;
+        for (from, to) in &renumbers {
+            renumbered_any |= sewn_together.renumber(*from, *to);
+        }
+        if !renumbered_any {
+            break;
+        }
     }
     dbg!(&sewn_together);
 }

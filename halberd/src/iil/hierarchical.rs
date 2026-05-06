@@ -33,12 +33,12 @@ pub enum BlockLocalExpr {
 impl_conversion_enum_variant!(BlockLocalExpr::{Op(iil::flat::OpExpr), Block(Box<Block>), Constant(Constant), Ref(block::BlockLocalRef)});
 
 impl Renumberable for BlockLocalExpr {
-    fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) {
+    fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) -> bool {
         match self {
             BlockLocalExpr::Op(op_expr) => op_expr.renumber(from, to),
             BlockLocalExpr::OpUntyped(op) => op.renumber(from, to),
             BlockLocalExpr::Block(block) => block.renumber(from, to),
-            BlockLocalExpr::Constant(constant) => {}
+            BlockLocalExpr::Constant(constant) => false,
             BlockLocalExpr::Ref(r) => r.renumber(from, to),
         }
     }

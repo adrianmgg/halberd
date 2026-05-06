@@ -236,7 +236,8 @@ fn codegen_instructions(
             .new_fn("renumber")
             .arg_mut_self()
             .arg("from", "block::BlockLocalRef")
-            .arg("to", "block::BlockLocalRef");
+            .arg("to", "block::BlockLocalRef")
+            .ret("bool");
         f_op_enum_renumber.line("match self {");
         relevant_instructions().for_each(|ii| {
             f_op_enum_renumber.line(format!(
@@ -452,10 +453,12 @@ fn codegen_instruction<'a>(
             .new_fn("renumber")
             .arg_mut_self()
             .arg("from", "block::BlockLocalRef")
-            .arg("to", "block::BlockLocalRef");
+            .arg("to", "block::BlockLocalRef")
+            .ret("bool");
+        renumber.line("false");
         for operand in &cg_operands.other_operands {
             if operand.is_expr {
-                renumber.line(format!("self.{}.renumber(from, to);", &operand.name));
+                renumber.line(format!(" | self.{}.renumber(from, to)", &operand.name));
             }
         }
 

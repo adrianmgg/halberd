@@ -41,7 +41,7 @@ pub enum OpAnyValued {
 impl_conversion_enum_variant!(OpAnyValued::{Typed(OpExpr), Untyped(OpExprUntyped)});
 
 impl block::Renumberable for OpAnyValued {
-    fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) {
+    fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) -> bool {
         match self {
             OpAnyValued::Typed(o) => o.renumber(from, to),
             OpAnyValued::Untyped(o) => o.renumber(from, to),
@@ -61,7 +61,9 @@ pub mod instruction {
     }
 
     impl block::Renumberable for OpFunction {
-        fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) {}
+        fn renumber(&mut self, from: block::BlockLocalRef, to: block::BlockLocalRef) -> bool {
+            false
+        }
     }
 
     impl super::IilOpExpr for OpFunction {
